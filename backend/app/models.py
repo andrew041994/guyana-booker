@@ -1,0 +1,58 @@
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, Date, Numeric
+from .database import Base
+from datetime import datetime
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    full_name = Column(String)
+    phone = Column(String)
+    whatsapp = Column(String)  # e.g. whatsapp:+592xxxxxxx
+    location = Column(String)
+    lat = Column(Float, nullable=True)
+    long = Column(Float, nullable=True)
+    is_provider = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Provider(Base):
+    __tablename__ = "providers"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    bio = Column(Text)
+
+class Service(Base):
+    __tablename__ = "services"
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"))
+    name = Column(String)
+    description = Column(Text)
+    price_gyd = Column(Float)
+    duration_minutes = Column(Integer)
+
+class Booking(Base):
+    __tablename__ = "bookings"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("users.id"))
+    service_id = Column(Integer, ForeignKey("services.id"))
+    start_time = Column(DateTime)
+    end_time = Column(DateTime)
+    status = Column(String, default="confirmed")  # confirmed, cancelled
+
+class Bill(Base):
+    __tablename__ = "bills"
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"))
+    month = Column(Date)  # first day of the month
+    total_gyd = Column(Numeric(10,2), default=0)
+    fee_gyd = Column(Numeric(10,2), default=0)
+    is_paid = Column(Boolean, default=False)
+    due_date = Column(DateTime)
+
+class Promotion(Base):
+    __tablename__ = "promotions"
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), unique=True)
+    free_bookings_total = Column(Integer, default=0)
+    free_bookings_used = Column(Integer, default=0)
