@@ -1552,6 +1552,7 @@ const [upcomingBookings, setUpcomingBookings] = useState([]);
 const [upcomingLoading, setUpcomingLoading] = useState(false);
 const [upcomingError, setUpcomingError] = useState("");
 const [providerLocation, setProviderLocation] = useState(null);
+const [focusedHoursField, setFocusedHoursField] = useState(null);
 
 
 
@@ -1848,7 +1849,7 @@ const saveWorkingHours = async () => {
       },
     });
 
-    if (showFlash) showFlash("success", "Working hours saved");
+    // if (showFlash) showFlash("success", "Working hours saved");
     setHoursFlash({ type: "success", message: "Working hours saved" });
     setTimeout(() => setHoursFlash(null), 2000);
   } catch (err) {
@@ -2587,56 +2588,71 @@ const loadProviderLocation = async () => {
                         <View style={{ flexDirection: "row" }}>
                           {/* Start time */}
                           <TextInput
-                            style={styles.hoursInput}
+                            style={[
+                              styles.hoursInput,
+                              focusedHoursField === `start-${h.id}` && styles.hoursInputFocused,
+                            ]}
                             value={h.startLocal || ""}
                             onChangeText={(text) => {
                               setWorkingHours((prev) =>
                                 prev.map((row) =>
-                                  row.id === h.id
-                                    ? { ...row, startLocal: text }
-                                    : row
+                                  row.id === h.id ? { ...row, startLocal: text } : row
                                 )
                               );
+                            }}
+                            onFocus={() => {
+                              setFocusedHoursField(`start-${h.id}`);
                             }}
                             onBlur={() => {
                               setWorkingHours((prev) =>
                                 prev.map((row) => {
                                   if (row.id !== h.id) return row;
                                   const as24 = to24Hour(row.startLocal);
-                                  return as24
-                                    ? { ...row, startLocal: to12Hour(as24) }
-                                    : row;
+
+                                  if (!as24) {
+                                    return { ...row, startLocal: "" };
+                                  }
+
+                                  return { ...row, startLocal: to12Hour(as24) };
                                 })
                               );
+                              setFocusedHoursField(null);
                             }}
                             placeholder="9:00 AM"
                           />
-
-                          <Text style={styles.serviceMeta}> - </Text>
+                         <Text style={styles.serviceMeta}> - </Text>
 
                           {/* End time */}
-                          <TextInput
-                            style={styles.hoursInput}
+                         <TextInput
+                            style={[
+                              styles.hoursInput,
+                              focusedHoursField === `end-${h.id}` && styles.hoursInputFocused,
+                            ]}
                             value={h.endLocal || ""}
                             onChangeText={(text) => {
                               setWorkingHours((prev) =>
                                 prev.map((row) =>
-                                  row.id === h.id
-                                    ? { ...row, endLocal: text }
-                                    : row
+                                  row.id === h.id ? { ...row, endLocal: text } : row
                                 )
                               );
+                            }}
+                            onFocus={() => {
+                              setFocusedHoursField(`end-${h.id}`);
                             }}
                             onBlur={() => {
                               setWorkingHours((prev) =>
                                 prev.map((row) => {
                                   if (row.id !== h.id) return row;
                                   const as24 = to24Hour(row.endLocal);
-                                  return as24
-                                    ? { ...row, endLocal: to12Hour(as24) }
-                                    : row;
+
+                                  if (!as24) {
+                                    return { ...row, endLocal: "" };
+                                  }
+
+                                  return { ...row, endLocal: to12Hour(as24) };
                                 })
                               );
+                              setFocusedHoursField(null);
                             }}
                             placeholder="5:00 PM"
                           />
@@ -3550,6 +3566,20 @@ radiusPillTextSelected: {
   color: "#ffffff",
   fontWeight: "600",
 },
+
+hoursInput: {
+  // whatever you already have
+  borderWidth: 1,
+  borderColor: "#ccc",
+  borderRadius: 6,
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+},
+
+hoursInputFocused: {
+  borderColor: "#007AFF", // iOS blue
+},
+
 
 
 
