@@ -1543,8 +1543,7 @@ function ProviderDashboardScreen({ token, showFlash }) {
 });
 
 const [customProfession, setCustomProfession] = useState("");
-
-
+const [providerSummary, setProviderSummary] = useState(null);
 const [todayBookings, setTodayBookings] = useState([]);
 const [todayLoading, setTodayLoading] = useState(false);
 const [todayError, setTodayError] = useState("");
@@ -1595,6 +1594,8 @@ const loadServices = async () => {
     loadTodayBookings();
     loadUpcomingBookings(); 
     loadProviderLocation(); 
+    loadProviderSummary();
+
 
 
   }, []);
@@ -2117,7 +2118,7 @@ const saveProviderProfile = async () => {
 
     });
 
-    if (showFlash) showFlash("success", "Provider profile saved");
+    // if (showFlash) showFlash("success", "Provider profile saved");
         setHoursFlash({ type: "success", message: "Provider profile saved" });
         setTimeout(() => setHoursFlash(null), 2000);
   } catch (err) {
@@ -2246,6 +2247,23 @@ const loadProviderLocation = async () => {
   }
 };
 
+const loadProviderSummary = async () => {
+  try {
+    const res = await axios.get(`${API}/providers/me/summary`, {
+      headers: {
+        Authorization: `Bearer ${token.token}`,
+      },
+    });
+    setProviderSummary(res.data);
+  } catch (err) {
+    console.log(
+      "Error loading provider summary",
+      err.response?.data || err.message
+    );
+  }
+};
+
+
 
 
   return (
@@ -2266,6 +2284,22 @@ const loadProviderLocation = async () => {
       <ScrollView contentContainerStyle={styles.providerScroll}>
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+        {/*Account Info */}
+        {providerSummary && (
+        <View style={styles.providerSummaryCard}>
+          <Text style={styles.providerSummaryLabel}>Account number</Text>
+          <Text style={styles.providerSummaryValue}>
+            {providerSummary.account_number || "N/A"}
+          </Text>
+
+          <View style={{ height: 8 }} />
+
+          <Text style={styles.providerSummaryLabel}>Fees due</Text>
+          <Text style={styles.providerSummaryValue}>
+            GYD {Math.round(providerSummary.total_fees_due_gyd).toLocaleString()}
+          </Text>
+        </View>
+      )}
 
         {/* TODAY overview */}
         <View style={styles.card}>
@@ -3580,6 +3614,29 @@ hoursInputFocused: {
   borderColor: "#007AFF", // iOS blue
 },
 
+providerSummaryCard: {
+  backgroundColor: "#FFFFFF",
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  marginBottom: 12,
+  shadowColor: "#000",
+  shadowOpacity: 0.05,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
+},
+
+providerSummaryLabel: {
+  fontSize: 13,
+  color: "#666",
+},
+
+providerSummaryValue: {
+  fontSize: 17,
+  fontWeight: "600",
+  color: "#111",
+},
 
 
 

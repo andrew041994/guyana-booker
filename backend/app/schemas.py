@@ -156,4 +156,9 @@ class UserProfileUpdate(BaseModel):
     whatsapp: Optional[str] = None
     location: Optional[str] = None
 
+class ProviderSummary(BaseModel):
+    account_number: str
+    total_fees_due_gyd: float
+
+
 

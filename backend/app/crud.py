@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from twilio.rest import Client
 import requests
-
+import hashlib
+from sqlalchemy import func
 from . import models, schemas
 
 
@@ -67,6 +68,7 @@ def get_provider_by_user_id(db: Session, user_id: int):
 
 def create_provider_for_user(db: Session, user: models.User):
     provider = models.Provider(user_id=user.id, bio="")
+    account_number=generate_account_number_for_email(user.email),
     db.add(provider)
     db.commit()
     db.refresh(provider)
@@ -115,20 +117,33 @@ def delete_service_for_provider(
     db.commit()
     return True
 
-def get_or_create_provider_for_user(db: Session, user_id: int):
+def get_or_create_provider_for_user(db: Session, user_id: int) -> models.Provider:
     provider = (
         db.query(models.Provider)
         .filter(models.Provider.user_id == user_id)
         .first()
     )
+
     if provider:
+        if not provider.account_number:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            provider.account_number = generate_account_number_for_email(user.email)
+            db.commit()
+            db.refresh(provider)
         return provider
 
-    provider = models.Provider(user_id=user_id, bio="")
-    db.add(provider)
-    db.commit()
-    db.refresh(provider)
-    return provider
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    return create_provider_for_user(db, user)
+
+
+def generate_account_number_for_email(email: str) -> str:
+    """
+    Deterministic account number linked to email.
+    Example: ACC-1A2B3C4D
+    """
+    normalized = (email or "").strip().lower()
+    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:8].upper()
+    return f"ACC-{digest}"
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +441,22 @@ def generate_monthly_bills(db: Session, month: date):
             )
 
     db.commit()
+
+    
+def get_provider_fees_due(db: Session, provider_id: int) -> float:
+    """
+    Sum of all unpaid fees for this provider, in GYD.
+    Assumes Bill.fee_gyd is only populated after appointments have finished.
+    """
+    total = (
+        db.query(func.coalesce(func.sum(models.Bill.fee_gyd), 0))
+        .filter(
+            models.Bill.provider_id == provider_id,
+            models.Bill.is_paid == False,  # unpaid only
+        )
+        .scalar()
+    )
+    return float(total or 0.0)
 
 
 def list_bookings_for_provider(db: Session, provider_id: int):

@@ -591,6 +591,38 @@ def get_provider_availability_route(
 
     return availability
 
+@app.get(
+    "/providers/me/summary",
+    response_model=schemas.ProviderSummary,
+    status_code=status.HTTP_200_OK,
+)
+def get_my_provider_summary(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers have summaries")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        provider = crud.create_provider_for_user(db, user)
+
+    # 🔑 Backfill account_number if it's missing
+    if not provider.account_number:
+        provider.account_number = crud.generate_account_number_for_email(user.email)
+        db.commit()
+        db.refresh(provider)
+
+    fees_due = crud.get_provider_fees_due(db, provider.id)
+
+    return schemas.ProviderSummary(
+        account_number=provider.account_number,
+        total_fees_due_gyd=fees_due,
+    )
+
+
 
 # ---------------------------
 # PUBLIC PROVIDER LIST + CLIENT BOOKINGS

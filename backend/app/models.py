@@ -23,6 +23,8 @@ class Provider(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     bio = Column(Text)
+    account_number = Column(String, unique=True, index=True)  # NEW
+
 
 class Service(Base):
     __tablename__ = "services"
