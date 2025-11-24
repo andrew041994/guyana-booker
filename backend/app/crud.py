@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta, date
+from dateutil import tz
 from decimal import Decimal
 import os
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from twilio.rest import Client
+import requests
 
 from . import models, schemas
 
@@ -14,7 +16,28 @@ from . import models, schemas
 # Password hashing
 # ---------------------------------------------------------------------------
 
+LOCAL_TZ = tz.gettz("America/Guyana")
+
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+
+EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+
+def send_push(to_token: Optional[str], title: str, body: str) -> None:
+    if not to_token:
+        return
+
+    payload = {
+        "to": to_token,
+        "sound": "default",
+        "title": title,
+        "body": body,
+    }
+
+    try:
+        requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Push error: {e}")
 
 def hash_password(password: str) -> str:
     """Return a secure hash for the given plaintext password."""
@@ -24,6 +47,14 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify that a plaintext password matches a stored hash."""
     return pwd_context.verify(plain, hashed)
+
+
+def now_local_naive():
+    """
+    Current Guyana local time, returned as a *naive* datetime so it
+    matches the DB columns and other code that uses naive datetimes.
+    """
+    return datetime.now(LOCAL_TZ).replace(tzinfo=None)
 
 
 
@@ -297,14 +328,45 @@ def create_booking(db: Session, booking: schemas.BookingCreate, customer_id: int
                 f"GYD {service.price_gyd}"
             ),
         )
+        customer = (
+    db.query(models.User)
+    .filter(models.User.id == customer_id)
+    .first()
+)
+
+            # WhatsApp (optional)
         send_whatsapp(
-            provider_user.whatsapp,
-            (
-                "New booking!\n"
-                f"{customer.full_name} booked {service.name}\n"
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-            ),
-        )
+                customer.whatsapp,
+                (
+                    "Booking confirmed!\n"
+                    f"{service.name} with {provider_user.full_name}\n"
+                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
+                    f"GYD {service.price_gyd}"
+                ),
+            )
+        send_whatsapp(
+                provider_user.whatsapp,
+                (
+                    "New booking!\n"
+                    f"{customer.full_name} booked {service.name}\n"
+                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
+                ),
+            )
+
+            # Push notifications
+        send_push(
+                customer.expo_push_token,
+                "Booking confirmed",
+                f"{service.name} with {provider_user.full_name} on "
+                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+            )
+
+        send_push(
+                provider_user.expo_push_token,
+                "New booking",
+                f"{customer.full_name} booked {service.name} on "
+                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+            )
 
     return db_booking
 
@@ -402,11 +464,119 @@ def list_bookings_for_provider(db: Session, provider_id: int):
         for r in rows
     ]
 
-def cancel_booking_for_provider(db: Session, booking_id: int, provider_id: int) -> bool:
+def list_bookings_for_customer(db: Session, customer_id: int):
     """
-    Set a booking's status to 'cancelled' if it belongs to this provider.
-    Returns True if updated, False if not found.
+    Return all bookings for this customer, newest first.
     """
+    user = (
+        db.query(models.User)
+        .filter(models.User.id == customer_id)
+        .first()
+    )
+
+    if not user:
+        return []
+
+    rows = (
+        db.query(models.Booking, models.Service)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(models.Booking.customer_id == customer_id)
+        .order_by(models.Booking.start_time.desc())
+        .all()
+    )
+
+    results = []
+    for booking, service in rows:
+        results.append(
+            schemas.BookingWithDetails(
+                id=booking.id,
+                start_time=booking.start_time,
+                end_time=booking.end_time,
+                status=booking.status,
+                service_name=service.name if service else "",
+                service_duration_minutes=service.duration_minutes if service else 0,
+                service_price_gyd=float(service.price_gyd or 0.0)
+                if service and service.price_gyd is not None
+                else 0.0,
+                customer_name=user.full_name or "",
+                customer_phone=user.phone or "",
+            )
+        )
+    return results
+
+def cancel_booking_for_customer(
+    db: Session, booking_id: int, customer_id: int
+) -> bool:
+
+    booking = (
+        db.query(models.Booking)
+        .filter(
+            models.Booking.id == booking_id,
+            models.Booking.customer_id == customer_id,
+        )
+        .first()
+    )
+
+    if not booking:
+        return False
+
+    service = (
+        db.query(models.Service)
+        .filter(models.Service.id == booking.service_id)
+        .first()
+    )
+
+    provider_user = None
+    if service:
+        provider = (
+            db.query(models.Provider)
+            .filter(models.Provider.id == service.provider_id)
+            .first()
+        )
+        if provider:
+            provider_user = (
+                db.query(models.User)
+                .filter(models.User.id == provider.user_id)
+                .first()
+            )
+
+    customer = (
+        db.query(models.User)
+        .filter(models.User.id == customer_id)
+        .first()
+    )
+
+    booking.status = "cancelled"
+    db.commit()
+    db.refresh(booking)
+
+    if provider_user and service and customer:
+        send_whatsapp(
+            provider_user.whatsapp,
+            (
+                "❌ Booking cancelled by customer.\n"
+                f"Customer: {customer.full_name}\n"
+                f"Service: {service.name}\n"
+                f"Time: {booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
+            ),
+        )
+
+        send_push(
+            provider_user.expo_push_token,
+            "Booking cancelled",
+            f"{customer.full_name} cancelled {service.name} "
+            f"for {booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+        )
+
+    return True
+
+
+
+
+def cancel_booking_for_provider(
+    db: Session, booking_id: int, provider_id: int
+) -> bool:
+
     booking = (
         db.query(models.Booking)
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -421,10 +591,41 @@ def cancel_booking_for_provider(db: Session, booking_id: int, provider_id: int) 
     if not booking:
         return False
 
+    service = (
+        db.query(models.Service)
+        .filter(models.Service.id == booking.service_id)
+        .first()
+    )
+
+    customer = (
+        db.query(models.User)
+        .filter(models.User.id == booking.customer_id)
+        .first()
+    )
+
     booking.status = "cancelled"
     db.commit()
     db.refresh(booking)
+
+    if customer and service:
+        send_whatsapp(
+            customer.whatsapp,
+            (
+                "❌ Your appointment was cancelled by the provider.\n"
+                f"Service: {service.name}\n"
+                f"Time: {booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
+            ),
+        )
+
+        send_push(
+            customer.expo_push_token,
+            "Appointment cancelled",
+            f"Your provider cancelled {service.name} "
+            f"scheduled for {booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+        )
+
     return True
+
 
 def get_or_create_working_hours_for_provider(db: Session, provider_id: int):
     """
@@ -499,6 +700,54 @@ def set_working_hours_for_provider(db: Session, provider_id: int, hours_list):
     )
     return rows
 
+def get_professions_for_provider(db: Session, provider_id: int) -> List[str]:
+    rows = (
+        db.query(models.ProviderProfession)
+        .filter(models.ProviderProfession.provider_id == provider_id)
+        .order_by(models.ProviderProfession.id.asc())
+        .all()
+    )
+    return [r.name for r in rows]
+
+
+def set_professions_for_provider(
+    db: Session, provider_id: int, professions: List[str]
+) -> List[str]:
+    """
+    Replace this provider's profession list with the given values.
+    Deduplicates and strips empty strings.
+    """
+    # Remove existing professions
+    db.query(models.ProviderProfession).filter(
+        models.ProviderProfession.provider_id == provider_id
+    ).delete()
+
+    cleaned: List[str] = []
+    for name in professions or []:
+        if not name:
+            continue
+        n = name.strip()
+        if not n:
+            continue
+        # case-insensitive dedupe
+        if any(existing.lower() == n.lower() for existing in cleaned):
+            continue
+        cleaned.append(n)
+
+    for name in cleaned:
+        db.add(models.ProviderProfession(provider_id=provider_id, name=name))
+
+    db.commit()
+
+    rows = (
+        db.query(models.ProviderProfession)
+        .filter(models.ProviderProfession.provider_id == provider_id)
+        .order_by(models.ProviderProfession.id.asc())
+        .all()
+    )
+    return [r.name for r in rows]
+
+
 def get_provider_availability(
     db: Session,
     provider_id: int,
@@ -540,7 +789,8 @@ def get_provider_availability(
 
     availability = []
 
-    now = datetime.utcnow()
+    now = now_local_naive()   # ⬅ use Guyana local “now”
+
     slot_duration = timedelta(minutes=service.duration_minutes)
 
     for offset in range(days):
@@ -619,7 +869,7 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     """
     All *confirmed* bookings for this provider whose start_time is today.
     """
-    now = datetime.utcnow()
+    now = now_local_naive()   # ⬅ Guyana local date for “today”
     start_of_day = datetime(now.year, now.month, now.day)
     end_of_day = start_of_day + timedelta(days=1)
 
@@ -662,7 +912,7 @@ def list_upcoming_bookings_for_provider(
     """
     All confirmed bookings for this provider from *tomorrow* up to N days in the future.
     """
-    now = datetime.utcnow()
+    now = now_local_naive()   # ⬅ Guyana local date for “today”
     start = now + timedelta(days=1)
     start_of_tomorrow = datetime(start.year, start.month, start.day)
     end = start_of_tomorrow + timedelta(days=days_ahead)
@@ -698,27 +948,28 @@ def list_upcoming_bookings_for_provider(
     return results
 
 
-def cancel_booking_for_provider(
-    db: Session, booking_id: int, provider_id: int
-) -> bool:
-    """
-    Mark a booking as cancelled if it belongs to this provider.
-    """
-    booking = (
-        db.query(models.Booking)
-        .join(models.Service, models.Booking.service_id == models.Service.id)
-        .filter(
-            models.Booking.id == booking_id,
-            models.Service.provider_id == provider_id,
-        )
-        .first()
-    )
-    if not booking:
-        return False
 
-    booking.status = "cancelled"
-    db.commit()
-    return True
+# def cancel_booking_for_provider(
+#     db: Session, booking_id: int, provider_id: int
+# ) -> bool:
+#     """
+#     Mark a booking as cancelled if it belongs to this provider.
+#     """
+#     booking = (
+#         db.query(models.Booking)
+#         .join(models.Service, models.Booking.service_id == models.Service.id)
+#         .filter(
+#             models.Booking.id == booking_id,
+#             models.Service.provider_id == provider_id,
+#         )
+#         .first()
+#     )
+#     if not booking:
+#         return False
+
+#     booking.status = "cancelled"
+#     db.commit()
+#     return True
 
 
 

@@ -8,12 +8,68 @@ import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import MapView, { Marker } from "react-native-maps";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 
 
 
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
 
 const ADMIN_EMAIL = "Alehandro.persaud@gmail.com";
+const PROFESSION_OPTIONS = [
+  "Barber",
+  "Hairdresser",
+  "Hairstylist",
+  "Braider",
+  "Loctician (dreadlocks)",
+  "Nail Technician",
+  "Manicurist",
+  "Pedicurist",
+  "Makeup Artist (MUA)",
+  "Lash Technician",
+  "Brow Technician",
+  "Esthetician / Skin Care",
+  "Waxing Specialist",
+  "Sugaring Specialist",
+  "Massage Therapist",
+  "Spa Therapist",
+  "Facialist",
+  "Beard Specialist",
+  "Men's Grooming Specialist",
+];
+
+async function registerForPushNotificationsAsync() {
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== "granted") {
+      console.log("Notification permissions not granted");
+      return null;
+    }
+
+    // Try to infer projectId from Constants (managed or dev client)
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ??
+      Constants?.easConfig?.projectId;
+
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+
+    return tokenData.data;
+  } catch (err) {
+    console.log("Error getting push token", err);
+    return null;
+  }
+}
+
+
 
 const Tab = createBottomTabNavigator();
 
@@ -54,6 +110,24 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
     });
 
     await AsyncStorage.setItem("accessToken", res.data.access_token);
+
+        try {
+      const expoPushToken = await registerForPushNotificationsAsync();
+      if (expoPushToken) {
+        await axios.post(
+          `${API}/me/push-token`,
+          { expo_push_token: expoPushToken },
+          {
+            headers: {
+              Authorization: `Bearer ${res.data.access_token}`,
+            },
+          }
+        );
+      }
+    } catch (err) {
+      console.log("Failed to register push token", err);
+    }
+
 
     setToken({
       token: res.data.access_token,
@@ -252,6 +326,21 @@ function ProfileScreen({ setToken, showFlash }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+   // NEW state for editing profile
+  const [showEdit, setShowEdit] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editProfile, setEditProfile] = useState({
+    full_name: "",
+    phone: "",
+    whatsapp: "",
+    location: "",
+  });
+
+  // NEW state for "My bookings"
+  const [showBookings, setShowBookings] = useState(false);
+  const [bookings, setBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState("");
 
   const logout = async () => {
     try {
@@ -291,6 +380,14 @@ function ProfileScreen({ setToken, showFlash }) {
         });
 
         setUser(res.data);
+               // setUser(res.data);
+        setEditProfile({
+          full_name: res.data.full_name || "",
+          phone: res.data.phone || "",
+          whatsapp: res.data.whatsapp || "",
+          location: res.data.location || "",
+        });
+
       } catch (err) {
         console.error("Error loading profile", err);
         setError("Could not load profile.");
@@ -304,6 +401,63 @@ function ProfileScreen({ setToken, showFlash }) {
 
     loadProfile();
   }, []);
+
+    const toggleEditProfile = () => {
+    // ensure form reflects current user
+    if (user && !showEdit) {
+      setEditProfile({
+        full_name: user.full_name || "",
+        phone: user.phone || "",
+        whatsapp: user.whatsapp || "",
+        location: user.location || "",
+      });
+    }
+    setShowEdit((prev) => !prev);
+  };
+
+  const saveProfileChanges = async () => {
+    try {
+      setEditSaving(true);
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) {
+        if (showFlash) showFlash("error", "No access token found. Please log in again.");
+        return;
+      }
+
+      const payload = {
+        full_name: editProfile.full_name,
+        phone: editProfile.phone,
+        whatsapp: editProfile.whatsapp,
+        location: editProfile.location,
+      };
+
+      const res = await axios.put(`${API}/me/profile`, payload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Refresh local user state so top card updates
+      setUser((prev) => ({
+        ...prev,
+        full_name: res.data.full_name,
+        phone: res.data.phone,
+        whatsapp: res.data.whatsapp,
+        location: res.data.location,
+      }));
+
+      if (showFlash) showFlash("success", "Profile updated");
+      setShowEdit(false);
+    } catch (err) {
+      console.log("Error saving profile", err.response?.data || err.message);
+      const detail =
+        err.response?.data?.detail || "Could not save profile changes.";
+      if (showFlash) showFlash("error", detail);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -339,6 +493,106 @@ function ProfileScreen({ setToken, showFlash }) {
       showFlash("info", `${label} coming soon`);
     }
   };
+
+    const formatBookingDate = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatBookingTime = (iso) => {
+    const d = new Date(iso);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const suffix = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+  };
+
+  const loadMyBookings = async () => {
+    try {
+      setBookingsLoading(true);
+      setBookingsError("");
+
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) {
+        setBookingsError("No access token found. Please log in again.");
+        return;
+      }
+
+      const res = await axios.get(`${API}/me/bookings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setBookings(res.data || []);
+    } catch (err) {
+      console.log("Error loading my bookings", err.response?.data || err.message);
+      setBookingsError("Could not load your bookings.");
+      if (showFlash) showFlash("error", "Could not load your bookings.");
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
+
+  const toggleMyBookings = async () => {
+    const next = !showBookings;
+    setShowBookings(next);
+    if (next) {
+      await loadMyBookings();
+    }
+  };
+
+  const handleClientCancelBooking = (bookingId) => {
+    Alert.alert(
+      "Cancel booking",
+      "Are you sure you want to cancel this booking?",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, cancel",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem("accessToken");
+              if (!token) {
+                if (showFlash)
+                  showFlash("error", "No access token found. Please log in.");
+                return;
+              }
+
+              await axios.post(
+                `${API}/me/bookings/${bookingId}/cancel`,
+                {},
+                {
+                  headers: { Authorization: `Bearer ${token}` },
+                }
+              );
+
+              // update local state so UI reflects cancellation
+              setBookings((prev) =>
+                (prev || []).map((b) =>
+                  b.id === bookingId ? { ...b, status: "cancelled" } : b
+                )
+              );
+
+              if (showFlash) showFlash("success", "Booking cancelled");
+            } catch (err) {
+              console.log(
+                "Error cancelling booking (client)",
+                err.response?.data || err.message
+              );
+              if (showFlash) showFlash("error", "Could not cancel booking.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+
 
   return (
     <ScrollView contentContainerStyle={styles.profileScroll}>
@@ -387,15 +641,125 @@ function ProfileScreen({ setToken, showFlash }) {
         </View>
       )}
 
+            {showEdit && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Edit profile</Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Full name"
+            value={editProfile.full_name}
+            onChangeText={(text) =>
+              setEditProfile((prev) => ({ ...prev, full_name: text }))
+            }
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Phone"
+            keyboardType="phone-pad"
+            value={editProfile.phone}
+            onChangeText={(text) =>
+              setEditProfile((prev) => ({ ...prev, phone: text }))
+            }
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="WhatsApp (optional)"
+            value={editProfile.whatsapp}
+            onChangeText={(text) =>
+              setEditProfile((prev) => ({ ...prev, whatsapp: text }))
+            }
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Location (e.g. Georgetown)"
+            value={editProfile.location}
+            onChangeText={(text) =>
+              setEditProfile((prev) => ({ ...prev, location: text }))
+            }
+          />
+
+          <View style={{ width: "100%", marginTop: 8 }}>
+            <Button
+              title={editSaving ? "Saving..." : "Save changes"}
+              onPress={saveProfileChanges}
+              color="#16a34a"
+              disabled={editSaving}
+            />
+          </View>
+        </View>
+      )}
+
+              {showBookings && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>My bookings</Text>
+
+          {bookingsLoading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading your bookings…</Text>
+            </View>
+          )}
+
+          {!bookingsLoading && bookingsError ? (
+            <Text style={styles.errorText}>{bookingsError}</Text>
+          ) : null}
+
+          {!bookingsLoading &&
+            !bookingsError &&
+            bookings.length === 0 && (
+              <Text style={styles.serviceHint}>
+                You have no bookings yet. Use the Search tab to book a service.
+              </Text>
+            )}
+
+          {!bookingsLoading &&
+              !bookingsError &&
+              bookings.length > 0 && (
+                <>
+                  {bookings.map((b) => (
+                    <View key={b.id} style={styles.bookingRow}>
+                      <View style={styles.bookingMain}>
+                        <Text style={styles.bookingTime}>
+                          {formatBookingDate(b.start_time)} ·{" "}
+                          {formatBookingTime(b.start_time)} –{" "}
+                          {formatBookingTime(b.end_time)}
+                        </Text>
+                        <Text style={styles.bookingService}>{b.service_name}</Text>
+                        <Text style={styles.bookingMeta}>Status: {b.status}</Text>
+                      </View>
+
+                      {b.status === "confirmed" && (
+                        <View style={styles.bookingActions}>
+                          <TouchableOpacity
+                            onPress={() => handleClientCancelBooking(b.id)}
+                          >
+                            <Text style={styles.bookingCancel}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </>
+              )}
+            </View>     
+          )} 
+
+
+
+
       <View style={styles.actionsContainer}>
         <Text style={styles.sectionTitle}>Actions</Text>
 
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleComingSoon("Edit profile")}
-        >
-          <Text style={styles.actionButtonText}>Edit profile</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+              style={styles.actionButton}
+              onPress={toggleEditProfile}
+          >
+          <Text style={styles.actionButtonText}>
+              {showEdit ? "Hide edit profile" : "Edit profile"}
+            </Text>
+          </TouchableOpacity>
+
 
         {isProvider && (
           <TouchableOpacity
@@ -406,14 +770,17 @@ function ProfileScreen({ setToken, showFlash }) {
           </TouchableOpacity>
         )}
 
-        {!isAdmin && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleComingSoon("My bookings")}
-          >
-            <Text style={styles.actionButtonText}>My bookings</Text>
-          </TouchableOpacity>
-        )}
+            {!isAdmin && (
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={toggleMyBookings}
+                >
+                  <Text style={styles.actionButtonText}>
+                    {showBookings ? "Hide my bookings" : "My bookings"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
 
         {isAdmin && (
           <TouchableOpacity
@@ -434,7 +801,9 @@ function ProfileScreen({ setToken, showFlash }) {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    
   );
+  
 }
 
 
@@ -442,24 +811,60 @@ function ProfileScreen({ setToken, showFlash }) {
 
 
 function SearchScreen({ token, showFlash }) {
+ 
+
+  const [filteredProviders, setFilteredProviders] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+  const [clientLocation, setClientLocation] = useState(null);
+  const [locationError, setLocationError] = useState("");
   const [providers, setProviders] = useState([]);
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState("");
-
   const [selectedProvider, setSelectedProvider] = useState(null);
-
   const [services, setServices] = useState([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesError, setServicesError] = useState("");
   const [selectedService, setSelectedService] = useState(null);
-
   const [availability, setAvailability] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
-
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+
+  //Radius 
+  const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
+
+  const haversineKm = (lat1, lon1, lat2, lon2) => {
+    if (
+      lat1 == null ||
+      lon1 == null ||
+      lat2 == null ||
+      lon2 == null
+    ) {
+      return null;
+    }
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371; // km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const handleSearchSubmit = () => {
+    // when the user hits enter/search on the keyboard
+    setHasSearched(true);
+  };
+
 
   // Load providers on mount
   useEffect(() => {
@@ -470,6 +875,8 @@ function SearchScreen({ token, showFlash }) {
 
         const res = await axios.get(`${API}/providers`);
         setProviders(res.data || []);
+        setFilteredProviders(res.data || []);
+
       } catch (err) {
         console.log(
           "Error loading providers",
@@ -484,6 +891,117 @@ function SearchScreen({ token, showFlash }) {
 
     loadProviders();
   }, []);
+
+//Add a useEffect that recomputes filteredProviders 
+// whenever providers/search/radius/location changes:
+  useEffect(() => {
+    // 👇 do nothing until the user actually searches
+    if (!hasSearched) {
+      setFilteredProviders([]);
+      return;
+    }
+
+    const q = searchQuery.trim().toLowerCase();
+
+    let list = (providers || []).map((p) => {
+      let distance_km = null;
+      if (clientLocation && p.lat != null && p.long != null) {
+        distance_km = haversineKm(
+          clientLocation.lat,
+          clientLocation.long,
+          p.lat,
+          p.long
+        );
+      }
+      return { ...p, distance_km };
+    });
+
+    // text filter (profession/name/location)
+    if (q) {
+      list = list.filter((p) => {
+        const name = (p.name || "").toLowerCase();
+        const location = (p.location || "").toLowerCase();
+        const professions = (p.professions || []).map((pr) =>
+          (pr || "").toLowerCase()
+        );
+
+        return (
+          professions.some((pr) => pr.includes(q)) ||
+          name.includes(q) ||
+          location.includes(q)
+        );
+      });
+    }
+
+    // distance filter
+    if (radiusKm > 0) {
+      if (!clientLocation) {
+        setLocationError(
+          "Turn on location services to filter providers by distance."
+        );
+      } else {
+        setLocationError("");
+        list = list.filter(
+          (p) =>
+            typeof p.distance_km === "number" &&
+            p.distance_km <= radiusKm
+        );
+        list.sort((a, b) => {
+          const da = a.distance_km ?? 999999;
+          const db = b.distance_km ?? 999999;
+          return da - db;
+        });
+      }
+    } else {
+      setLocationError("");
+    }
+
+    setFilteredProviders(list);
+  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched]);
+
+
+
+  const ensureClientLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setLocationError(
+          "Location permission is required to filter by distance."
+        );
+        if (showFlash) {
+          showFlash(
+            "error",
+            "Please enable location permission to use distance filters."
+          );
+        }
+        return null;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({});
+      const coords = {
+        lat: loc.coords.latitude,
+        long: loc.coords.longitude,
+      };
+      setClientLocation(coords);
+      setLocationError("");
+      return coords;
+    } catch (err) {
+      console.log("Error getting client location", err);
+      setLocationError("Could not get your current location.");
+      if (showFlash) {
+        showFlash("error", "Could not get your current location.");
+      }
+      return null;
+    }
+  };
+
+  const handleRadiusChange = async (value) => {
+    setRadiusKm(value);
+    if (value > 0 && !clientLocation) {
+      await ensureClientLocation();
+    }
+  };
+
 
   const loadAvailability = async (providerId, serviceId) => {
     try {
@@ -662,62 +1180,141 @@ function SearchScreen({ token, showFlash }) {
     });
   };
 
-  return (
+    return (
     <ScrollView contentContainerStyle={styles.providerScroll}>
       <Text style={styles.profileTitle}>Find a provider</Text>
       <Text style={styles.subtitleSmall}>
-        Pick a provider, service, date, and time.
+        Search by profession and distance, then pick a service and time.
       </Text>
 
-      {/* Providers list */}
+      {/* Filters */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Providers</Text>
+        <Text style={styles.sectionTitle}>Search filters</Text>
 
-        {providersLoading && (
-          <View style={{ paddingVertical: 10 }}>
-            <ActivityIndicator />
-            <Text style={styles.serviceMeta}>Loading providers…</Text>
-          </View>
-        )}
+        <TextInput
+          style={styles.input}
+          placeholder="Search by profession (e.g. Barber, Nail Tech)"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onSubmitEditing={handleSearchSubmit}
+        />
 
-        {!providersLoading && providersError ? (
-          <Text style={styles.errorText}>{providersError}</Text>
-        ) : null}
+        <Text style={[styles.label, { marginTop: 8 }]}>Distance</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 8 }}
+        >
+          {radiusOptions.map((km) => {
+            const selected = radiusKm === km;
+            const label = km === 0 ? "Any distance" : `${km} km`;
+            return (
+              <TouchableOpacity
+                key={km}
+                style={[
+                  styles.radiusPill,
+                  selected && styles.radiusPillSelected,
+                ]}
+                onPress={() => handleRadiusChange(km)}
+              >
+                <Text
+                  style={[
+                    styles.radiusPillText,
+                    selected && styles.radiusPillTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
-        {!providersLoading && !providersError && providers.length === 0 && (
-          <Text style={styles.serviceHint}>
-            No providers available yet. Check back soon.
+        {locationError ? (
+          <Text style={[styles.errorText, { marginTop: 6 }]}>
+            {locationError}
           </Text>
-        )}
-
-        {!providersLoading &&
-          !providersError &&
-          providers.map((p) => (
-            <TouchableOpacity
-              key={p.provider_id}
-              style={[
-                styles.serviceRow,
-                selectedProvider &&
-                  selectedProvider.provider_id === p.provider_id && {
-                    backgroundColor: "#ecfdf3",
-                  },
-              ]}
-              onPress={() => handleSelectProvider(p)}
-            >
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.serviceName}>{p.name}</Text>
-                {p.location ? (
-                  <Text style={styles.serviceMeta}>{p.location}</Text>
-                ) : null}
-                {p.bio ? (
-                  <Text numberOfLines={2} style={styles.serviceMeta}>
-                    {p.bio}
-                  </Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-          ))}
+        ) : null}
       </View>
+
+      {/* Providers list */}
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Providers</Text>
+
+              {/* If user hasn't searched yet, show hint */}
+              {!hasSearched && (
+                <Text style={styles.serviceHint}>
+                  Type a profession and press enter to search.
+                </Text>
+              )}
+
+              {/* Loading */}
+              {providersLoading && hasSearched && (
+                <View style={{ paddingVertical: 10 }}>
+                  <ActivityIndicator />
+                  <Text style={styles.serviceMeta}>Loading providers…</Text>
+                </View>
+              )}
+
+              {/* Error */}
+              {!providersLoading && providersError && hasSearched && (
+                <Text style={styles.errorText}>{providersError}</Text>
+              )}
+
+              {/* No results */}
+              {!providersLoading &&
+                !providersError &&
+                hasSearched &&
+                filteredProviders.length === 0 && (
+                  <Text style={styles.serviceHint}>No providers found.</Text>
+                )}
+
+              {/* Results */}
+              {!providersLoading &&
+                !providersError &&
+                hasSearched &&
+                filteredProviders.length > 0 &&
+                filteredProviders.map((p) => (
+                  <TouchableOpacity
+                    key={p.provider_id}
+                    style={[
+                      styles.serviceRow,
+                      selectedProvider &&
+                        selectedProvider.provider_id === p.provider_id && {
+                          backgroundColor: "#ecfdf3",
+                        },
+                    ]}
+                    onPress={() => handleSelectProvider(p)}
+                  >
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.serviceName}>{p.name}</Text>
+
+                      {p.location ? (
+                        <Text style={styles.serviceMeta}>{p.location}</Text>
+                      ) : null}
+
+                      {(p.professions || []).length > 0 && (
+                        <Text style={styles.serviceMeta}>
+                          {p.professions.join(" · ")}
+                        </Text>
+                      )}
+
+                      {typeof p.distance_km === "number" && clientLocation && (
+                        <Text style={styles.serviceMeta}>
+                          {p.distance_km.toFixed(1)} km away
+                        </Text>
+                      )}
+
+                      {p.bio ? (
+                        <Text numberOfLines={2} style={styles.serviceMeta}>
+                          {p.bio}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+            </View>
+
 
       {/* Services list for selected provider */}
       {selectedProvider && (
@@ -883,7 +1480,7 @@ function SearchScreen({ token, showFlash }) {
         </View>
       )}
 
-      {/* Book button BELOW the time-slot card */}
+      {/* Book button */}
       {selectedService && selectedDate && (
         <View style={{ marginTop: 12, marginBottom: 20 }}>
           <TouchableOpacity
@@ -903,6 +1500,7 @@ function SearchScreen({ token, showFlash }) {
     </ScrollView>
   );
 }
+
 
 
 
@@ -941,7 +1539,11 @@ function ProviderDashboardScreen({ token, showFlash }) {
   whatsapp: "",
   location: "",
   bio: "",
+  professions: [],
 });
+
+const [customProfession, setCustomProfession] = useState("");
+
 
 const [todayBookings, setTodayBookings] = useState([]);
 const [todayLoading, setTodayLoading] = useState(false);
@@ -1283,67 +1885,76 @@ const to12Hour = (time24) => {
 // Convert "h:MM AM/PM" → "HH:MM" safely
 // "h:MM AM/PM" or "1000am" / "930 PM" / "10" -> "HH:MM"
 const to24Hour = (time12) => {
-  if (!time12) return "";
+      if (!time12) return "";
 
-  let raw = time12.trim().toUpperCase();
+      let raw = time12.trim().toUpperCase();
 
-  // 1) Extract AM/PM if present
-  let suffix = null;
-  if (raw.endsWith("AM")) {
-    suffix = "AM";
-    raw = raw.slice(0, -2).trim();
-  } else if (raw.endsWith("PM")) {
-    suffix = "PM";
-    raw = raw.slice(0, -2).trim();
-  }
+      // 1) Extract AM/PM if present
+      let suffix = null;
+      if (raw.endsWith("AM")) {
+        suffix = "AM";
+        raw = raw.slice(0, -2).trim();
+      } else if (raw.endsWith("PM")) {
+        suffix = "PM";
+        raw = raw.slice(0, -2).trim();
+      }
 
-  // 2) Remove any remaining spaces
-  let time = raw.replace(/\s+/g, "");
+      // 2) Remove any remaining spaces
+      raw = raw.replace(/\s+/g, "");
 
-  let h, m;
+      let h, m;
 
-  if (time.includes(":")) {
-    // Normal "h:mm" or "hh:mm"
-    const parts = time.split(":");
-    if (parts.length !== 2) return "";
-    h = parseInt(parts[0], 10);
-    m = parseInt(parts[1], 10);
-  } else if (/^\d+$/.test(time)) {
-    // Only digits like "1000", "930", "10"
-    if (time.length === 4) {
-      // "1000" -> 10:00, "0930" -> 9:30
-      h = parseInt(time.slice(0, 2), 10);
-      m = parseInt(time.slice(2, 4), 10);
-    } else if (time.length === 3) {
-      // "930" -> 9:30
-      h = parseInt(time.slice(0, 1), 10);
-      m = parseInt(time.slice(1, 3), 10);
-    } else if (time.length <= 2) {
-      // "9" or "10" -> 9:00 / 10:00
-      h = parseInt(time, 10);
-      m = 0;
-    } else {
-      return "";
-    }
-  } else {
-    // Invalid format
-    return "";
-  }
+      if (raw.includes(":")) {
+        // Normal "h:mm" or "hh:mm"
+        const parts = raw.split(":");
+        if (parts.length !== 2) return "";
+        h = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10);
+      } else if (/^\d+$/.test(raw)) {
+        // Only digits like "1000", "930", "10"
+        if (raw.length === 4) {
+          // "1000" -> 10:00, "0930" -> 9:30
+          h = parseInt(raw.slice(0, 2), 10);
+          m = parseInt(raw.slice(2, 4), 10);
+        } else if (raw.length === 3) {
+          // "930" -> 9:30
+          h = parseInt(raw.slice(0, 1), 10);
+          m = parseInt(raw.slice(1, 3), 10);
+        } else if (raw.length <= 2) {
+          // "9" or "10" -> 9:00 / 10:00
+          h = parseInt(raw, 10);
+          m = 0;
+        } else {
+          return "";
+        }
+      } else {
+        // Invalid format
+        return "";
+      }
 
-  if (isNaN(h) || isNaN(m)) return "";
+      // 3) Validate ranges: must be real clock time
+      if (
+        isNaN(h) ||
+        isNaN(m) ||
+        h < 0 ||
+        h > 23 ||
+        m < 0 ||
+        m > 59
+      ) {
+        return "";
+      }
 
-  // 3) Default to AM if no suffix provided
-  if (!suffix) suffix = "AM";
+      // 4) Default to AM if no suffix provided
+      if (!suffix) suffix = "AM";
 
-  // 4) Convert to 24h
-  if (suffix === "PM" && h !== 12) h += 12;
-  if (suffix === "AM" && h === 12) h = 0;
+      // 5) Convert to 24h
+      if (suffix === "PM" && h !== 12) h += 12;
+      if (suffix === "AM" && h === 12) h = 0;
 
-  // 5) Return "HH:MM"
-  return `${h.toString().padStart(2, "0")}:${m
-    .toString()
-    .padStart(2, "0")}`;
+      // 6) Return "HH:MM"
+      return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 };
+
 
 
   const handleAddService = async () => {
@@ -1453,13 +2064,15 @@ const to24Hour = (time12) => {
       },
     });
 
-    setProfile({
-      full_name: res.data.full_name || "",
-      phone: res.data.phone || "",
-      whatsapp: res.data.whatsapp || "",
-      location: res.data.location || "",
-      bio: res.data.bio || "",
-    });
+      setProfile({
+        full_name: res.data.full_name || "",
+        phone: res.data.phone || "",
+        whatsapp: res.data.whatsapp || "",
+        location: res.data.location || "",
+        bio: res.data.bio || "",
+        professions: res.data.professions || [],
+      });
+
   } catch (err) {
     console.log("Error loading provider profile", err.response?.data || err.message);
     setProfileError("Could not load provider profile.");
@@ -1477,13 +2090,15 @@ const saveProviderProfile = async () => {
       return;
     }
 
-    const payload = {
-      full_name: profile.full_name,
-      phone: profile.phone,
-      whatsapp: profile.whatsapp,
-      location: profile.location,
-      bio: profile.bio,
-    };
+        const payload = {
+          full_name: profile.full_name,
+          phone: profile.phone,
+          whatsapp: profile.whatsapp,
+          location: profile.location,
+          bio: profile.bio,
+          professions: profile.professions || [],
+        };
+
 
     const res = await axios.put(`${API}/providers/me/profile`, payload, {
       headers: {
@@ -1497,6 +2112,8 @@ const saveProviderProfile = async () => {
       whatsapp: res.data.whatsapp || "",
       location: res.data.location || "",
       bio: res.data.bio || "",
+      professions: res.data.professions || [],
+
     });
 
     if (showFlash) showFlash("success", "Provider profile saved");
@@ -2104,13 +2721,97 @@ const loadProviderLocation = async () => {
                   multiline
                 />
 
-                <View style={{ width: "100%", marginTop: 8 }}>
+                <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Professions</Text>
+                <Text style={styles.hoursHelp}>
+                  Select all that apply. Clients will be able to search by these.
+                </Text>
+
+                <View style={styles.professionChipsContainer}>
+                  {PROFESSION_OPTIONS.map((opt) => {
+                    const selected = (profile.professions || []).some(
+                      (p) => p.toLowerCase() === opt.toLowerCase()
+                    );
+                    return (
+                      <TouchableOpacity
+                        key={opt}
+                        style={[
+                          styles.professionChip,
+                          selected && styles.professionChipSelected,
+                        ]}
+                        onPress={() => {
+                          setProfile((prev) => {
+                            const current = prev.professions || [];
+                            const exists = current.some(
+                              (p) => p.toLowerCase() === opt.toLowerCase()
+                            );
+                            return {
+                              ...prev,
+                              professions: exists
+                                ? current.filter(
+                                    (p) => p.toLowerCase() !== opt.toLowerCase()
+                                  )
+                                : [...current, opt],
+                            };
+                          });
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.professionChipText,
+                            selected && styles.professionChipTextSelected,
+                          ]}
+                        >
+                          {opt}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.customProfessionRow}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                    placeholder="Add another profession (e.g. Tattoo Artist)"
+                    value={customProfession}
+                    onChangeText={setCustomProfession}
+                  />
+                  <TouchableOpacity
+                    style={styles.customProfessionAddButton}
+                    onPress={() => {
+                      const trimmed = customProfession.trim();
+                      if (!trimmed) return;
+                      setProfile((prev) => {
+                        const current = prev.professions || [];
+                        const exists = current.some(
+                          (p) => p.toLowerCase() === trimmed.toLowerCase()
+                        );
+                        if (exists) return prev;
+                        return {
+                          ...prev,
+                          professions: [...current, trimmed],
+                        };
+                      });
+                      setCustomProfession("");
+                    }}
+                  >
+                    <Text style={styles.customProfessionAddText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {(profile.professions || []).length > 0 && (
+                  <Text style={styles.serviceMeta}>
+                    Selected: {profile.professions.join(", ")}
+                  </Text>
+                )}
+
+                <View style={{ width: "100%", marginTop: 12 }}>
                   <Button
                     title="Save provider profile"
                     onPress={saveProviderProfile}
                     color="#16a34a"
                   />
                 </View>
+
               </>
             )}
           </View>
@@ -2248,10 +2949,10 @@ function FlashMessage({ flash }) {
 function App() {
   const [token, setToken] = useState(null);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup'
-    const [isAdmin, setIsAdmin] = useState(false);       // 👈 add this
+  const [isAdmin, setIsAdmin] = useState(false);
 
-	//flash state plus helper
-	 const [flash, setFlash] = useState(null);
+  // flash state plus helper
+  const [flash, setFlash] = useState(null);
 
   const showFlash = (type, text) => {
     setFlash({ type, text });
@@ -2260,21 +2961,12 @@ function App() {
     }, 3000); // hide after 3s
   };
 
-
+  // Not logged in yet → show landing/login/signup flow
   if (!token) {
-    if (authMode === "landing") {
-      return (
-        <LandingScreen
-          goToLogin={() => setAuthMode("login")}
-          goToSignup={() => setAuthMode("signup")}
-        />
-      );
-    }
-
-      if (!token) {
     return (
       <>
         <FlashMessage flash={flash} />
+
         {authMode === "landing" && (
           <LandingScreen
             goToLogin={() => setAuthMode("login")}
@@ -2302,16 +2994,16 @@ function App() {
       </>
     );
   }
-}
 
-  // When logged in
+  // Logged in → show main app (tabs)
   return (
     <>
       <FlashMessage flash={flash} />
-      <MainApp token={token} setToken={setToken}  showFlash={showFlash}/>
+      <MainApp token={token} setToken={setToken} showFlash={showFlash} />
     </>
   );
 }
+
 
 
  const styles = StyleSheet.create({
@@ -2789,6 +3481,76 @@ bookButtonLabel: {
   fontWeight: "600",
   color: "#ffffff",
 },
+
+professionChipsContainer: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  marginTop: 8,
+  marginBottom: 4,
+},
+professionChip: {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "#D1D5DB",
+  backgroundColor: "#F9FAFB",
+  marginRight: 6,
+  marginBottom: 6,
+},
+professionChipSelected: {
+  backgroundColor: "#16a34a",
+  borderColor: "#16a34a",
+},
+professionChipText: {
+  fontSize: 12,
+  color: "#374151",
+},
+professionChipTextSelected: {
+  color: "#ffffff",
+  fontWeight: "600",
+},
+customProfessionRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 8,
+  marginBottom: 4,
+},
+customProfessionAddButton: {
+  marginLeft: 8,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 8,
+  backgroundColor: "#16a34a",
+},
+customProfessionAddText: {
+  color: "#ffffff",
+  fontSize: 13,
+  fontWeight: "600",
+},
+
+radiusPill: {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "#D1D5DB",
+  backgroundColor: "#ffffff",
+  marginRight: 8,
+},
+radiusPillSelected: {
+  backgroundColor: "#16a34a",
+  borderColor: "#16a34a",
+},
+radiusPillText: {
+  fontSize: 12,
+  color: "#374151",
+},
+radiusPillTextSelected: {
+  color: "#ffffff",
+  fontWeight: "600",
+},
+
 
 
 

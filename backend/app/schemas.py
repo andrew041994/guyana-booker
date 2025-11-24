@@ -91,6 +91,8 @@ class ProviderProfileOut(BaseModel):
     whatsapp: Optional[str] = None
     location: str
     bio: Optional[str] = None
+    professions: List[str] = []
+
 
 
 class ProviderProfileUpdate(BaseModel):
@@ -99,6 +101,8 @@ class ProviderProfileUpdate(BaseModel):
     whatsapp: Optional[str] = None
     location: Optional[str] = None
     bio: Optional[str] = None
+    professions: Optional[List[str]] = None
+
 
 class BookingWithDetails(BaseModel):
     id: int
@@ -128,6 +132,8 @@ class ProviderListItem(BaseModel):
     lat: Optional[float] = None
     long: Optional[float] = None
     bio: Optional[str] = None
+    professions: List[str] = []
+
 
 class AvailabilitySlot(BaseModel):
     start_time: datetime  # full ISO datetime from backend
@@ -136,5 +142,18 @@ class AvailabilitySlot(BaseModel):
 class ProviderAvailabilityDay(BaseModel):
     date: date            # YYYY-MM-DD
     slots: List[datetime]  # list of ISO datetimes (start times)
+
+class UserProfileOut(BaseModel):
+    full_name: str
+    phone: str
+    whatsapp: Optional[str] = None
+    location: str
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    location: Optional[str] = None
 
 

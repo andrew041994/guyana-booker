@@ -10,6 +10,7 @@ class User(Base):
     full_name = Column(String)
     phone = Column(String)
     whatsapp = Column(String)  # e.g. whatsapp:+592xxxxxxx
+    expo_push_token = Column(String, nullable=True)
     location = Column(String)
     lat = Column(Float, nullable=True)
     long = Column(Float, nullable=True)
@@ -66,3 +67,9 @@ class ProviderWorkingHours(Base):
     is_closed = Column(Boolean, default=True)
     start_time = Column(String, nullable=True)  # "09:00"
     end_time = Column(String, nullable=True)    # "17:00"
+
+class ProviderProfession(Base):
+    __tablename__ = "provider_professions"
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"))
+    name = Column(String, index=True)

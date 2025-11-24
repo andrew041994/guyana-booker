@@ -8,11 +8,18 @@ from app import crud, schemas, models
 import os
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from app.workers.cron import registerCronJobs
+
 
 SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret")
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
 app = FastAPI(title="Guyana Booker")
+scheduler = BackgroundScheduler()
+registerCronJobs(scheduler)
+scheduler.start()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -151,6 +158,73 @@ def read_me(authorization: str = Header(None), db: Session = Depends(get_db)):
         "is_provider": user.is_provider,
         "is_admin": user.is_admin,
     }
+
+# ---------------------------
+# ME PROFILE (for any user)
+# ---------------------------
+
+@app.get("/me/profile",
+    response_model=schemas.UserProfileOut,
+    status_code=status.HTTP_200_OK,
+)
+def get_my_profile(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    return schemas.UserProfileOut(
+        full_name=user.full_name or "",
+        phone=user.phone or "",
+        whatsapp=user.whatsapp,
+        location=user.location or "",
+    )
+
+
+@app.put("/me/profile",
+    response_model=schemas.UserProfileOut,
+    status_code=status.HTTP_200_OK,
+)
+def update_my_profile(
+    payload: schemas.UserProfileUpdate,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+
+    if payload.phone is not None:
+        user.phone = payload.phone
+
+    if payload.whatsapp is not None:
+        user.whatsapp = payload.whatsapp
+
+    if payload.location is not None:
+        user.location = payload.location
+
+    db.commit()
+    db.refresh(user)
+
+    return schemas.UserProfileOut(
+        full_name=user.full_name or "",
+        phone=user.phone or "",
+        whatsapp=user.whatsapp,
+        location=user.location or "",
+    )
+
+@app.post("/me/push-token")
+def save_my_push_token(
+    payload: dict,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+    token = payload.get("expo_push_token")
+    user.expo_push_token = token
+    db.commit()
+    return {"status": "ok"}
 
 
 # ---------------------------
@@ -338,6 +412,7 @@ def get_my_provider_profile(
         raise HTTPException(status_code=403, detail="Only providers can edit provider profile")
 
     provider = crud.get_or_create_provider_for_user(db, user.id)
+    professions = crud.get_professions_for_provider(db, provider.id)
 
     return schemas.ProviderProfileOut(
         full_name=user.full_name or "",
@@ -345,7 +420,9 @@ def get_my_provider_profile(
         whatsapp=user.whatsapp,
         location=user.location or "",
         bio=provider.bio or "",
+        professions=professions,
     )
+
 
 
 @app.put(
@@ -365,7 +442,7 @@ def update_my_provider_profile(
 
     provider = crud.get_or_create_provider_for_user(db, user.id)
 
-    # Update fields if provided
+    # Update basic fields
     if payload.full_name is not None:
         user.full_name = payload.full_name
 
@@ -381,6 +458,14 @@ def update_my_provider_profile(
     if payload.bio is not None:
         provider.bio = payload.bio
 
+    # Update professions if provided
+    if payload.professions is not None:
+        professions = crud.set_professions_for_provider(
+            db, provider.id, payload.professions
+        )
+    else:
+        professions = crud.get_professions_for_provider(db, provider.id)
+
     db.commit()
     db.refresh(user)
     db.refresh(provider)
@@ -391,7 +476,9 @@ def update_my_provider_profile(
         whatsapp=user.whatsapp,
         location=user.location or "",
         bio=provider.bio or "",
+        professions=professions,
     )
+
 
 @app.get(
     "/providers/me/bookings/today",
@@ -525,6 +612,7 @@ def list_providers(db: Session = Depends(get_db)):
     )
     out = []
     for provider, user in rows:
+        professions = crud.get_professions_for_provider(db, provider.id)
         out.append(
             schemas.ProviderListItem(
                 provider_id=provider.id,
@@ -533,9 +621,11 @@ def list_providers(db: Session = Depends(get_db)):
                 lat=user.lat,
                 long=user.long,
                 bio=provider.bio or "",
+                professions=professions,
             )
         )
     return out
+
 
 
 @app.get(
@@ -596,5 +686,42 @@ def create_booking_for_me(
         customer_phone=customer.phone or "",
     )
 
+@app.get(
+    "/me/bookings",
+    response_model=List[schemas.BookingWithDetails],
+    status_code=status.HTTP_200_OK,
+)
+def list_my_bookings_for_me(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    All bookings for the currently logged-in user as a customer.
+    """
+    user = get_current_user_from_header(authorization, db)
+    bookings = crud.list_bookings_for_customer(db, user.id)
+    return bookings
+
+@app.post(
+    "/me/bookings/{booking_id}/cancel",
+    status_code=status.HTTP_200_OK,
+)
+def cancel_my_booking_as_customer(
+    booking_id: int,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancel a booking as the currently logged-in customer.
+    """
+    user = get_current_user_from_header(authorization, db)
+
+    ok = crud.cancel_booking_for_customer(
+        db, booking_id=booking_id, customer_id=user.id
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    return {"status": "cancelled"}
 
 
