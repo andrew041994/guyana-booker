@@ -1,17 +1,21 @@
-# app/workers/cron.py
-
 from datetime import timedelta
 from sqlalchemy.orm import Session
+
 from app.database import SessionLocal
 from app import models
-from app.crud import send_whatsapp, now_local_naive, send_push
+from app.crud import send_push, now_local_naive, generate_monthly_bills
 
 
 def send_upcoming_reminders():
-    db = SessionLocal()
+    """
+    Send push reminder to clients 1 hour before their appointment.
+    Runs regularly via APScheduler.
+    """
+    db: Session = SessionLocal()
+
     now = now_local_naive()
-    start = now + timedelta(hours=1) - timedelta(minutes=1)
-    end = now + timedelta(hours=1) + timedelta(minutes=1)
+    reminder_window_start = now + timedelta(hours=1) - timedelta(minutes=1)
+    reminder_window_end = now + timedelta(hours=1) + timedelta(minutes=1)
 
     rows = (
         db.query(models.Booking, models.Service, models.User)
@@ -19,8 +23,8 @@ def send_upcoming_reminders():
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Booking.status == "confirmed",
-            models.Booking.start_time >= start,
-            models.Booking.start_time <= end,
+            models.Booking.start_time >= reminder_window_start,
+            models.Booking.start_time <= reminder_window_end,
         )
         .all()
     )
@@ -29,17 +33,35 @@ def send_upcoming_reminders():
         send_push(
             customer.expo_push_token,
             "Upcoming appointment",
-            f"Your {service.name} at {booking.start_time.strftime('%I:%M %p')} "
-            "starts in 1 hour.",
+            f"Your {service.name} at "
+            f"{booking.start_time.strftime('%I:%M %p')} starts in 1 hour.",
         )
 
     db.close()
 
+
+def run_billing_job():
+    """
+    Recalculate monthly bills for all providers based on completed bookings.
+
+    This uses today's date to determine the current month and will:
+    - Only count bookings that have already ended.
+    - Update or create a Bill row for this month per provider.
+    """
+    db: Session = SessionLocal()
+    try:
+        today = now_local_naive().date()
+        generate_monthly_bills(db, today)
+    finally:
+        db.close()
 
 
 def registerCronJobs(scheduler):
     """
     Register all recurring scheduled tasks.
     """
-    # Run reminder job every minute
+    # 1-hour reminders: run every minute
     scheduler.add_job(send_upcoming_reminders, "interval", minutes=1)
+
+    # Billing snapshot: update fees every 10 minutes
+    scheduler.add_job(run_billing_job, "interval", minutes=5)

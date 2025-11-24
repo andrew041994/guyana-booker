@@ -391,58 +391,83 @@ def create_booking(db: Session, booking: schemas.BookingCreate, customer_id: int
 # ---------------------------------------------------------------------------
 
 def generate_monthly_bills(db: Session, month: date):
-    """Generate bills for all providers for the given month."""
+    """
+    Generate or update bills for all providers for the given month.
+
+    - Only counts bookings that are:
+        * confirmed
+        * belong to this provider
+        * have ALREADY ENDED (end_time <= now)
+        * have end_time inside [first_of_month, first_of_next_month)
+    - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
+    """
     providers = db.query(models.Provider).all()
 
-    for prov in providers:
-        start = month.replace(day=1)
-        end = (month.replace(day=1) + timedelta(days=32)).replace(day=1)
+    # First day of this month
+    start = month.replace(day=1)
+    # First day of the next month
+    end = (start + timedelta(days=32)).replace(day=1)
 
+    now = datetime.utcnow()
+    # Don't count future appointments that haven't ended yet
+    period_end = min(end, now)
+
+    for prov in providers:
+        # Total value of all completed confirmed bookings in this period
         total = (
             db.query(func.sum(models.Service.price_gyd))
             .join(models.Booking)
             .filter(
                 models.Booking.service_id == models.Service.id,
-                models.Booking.start_time >= start,
-                models.Booking.start_time < end,
-                models.Booking.status == "confirmed",
                 models.Service.provider_id == prov.id,
+                models.Booking.status == "confirmed",
+                models.Booking.end_time >= start,
+                models.Booking.end_time < period_end,
             )
             .scalar()
             or 0
         )
 
+        # 10% platform fee on completed bookings
         fee = Decimal("0.1") * Decimal(str(total))
-        due = datetime(end.year, end.month, 15, 23, 59)
 
-        bill = models.Bill(
-            provider_id=prov.id,
-            month=start,
-            total_gyd=total,
-            fee_gyd=fee,
-            due_date=due,
-        )
-        db.add(bill)
-
-        provider_user = (
-            db.query(models.User)
-            .filter(models.User.id == prov.user_id)
+        # If there's nothing to bill and no existing bill, skip
+        existing_bill = (
+            db.query(models.Bill)
+            .filter(
+                models.Bill.provider_id == prov.id,
+                models.Bill.month == start,
+            )
             .first()
         )
-        if provider_user:
-            send_whatsapp(
-                provider_user.whatsapp,
-                (
-                    f"New bill for {start.strftime('%B %Y')}\n"
-                    f"Total bookings: GYD {total}\n"
-                    f"Your fee (10%): GYD {fee}\n"
-                    f"Due: 15 {end.strftime('%B %Y')}"
-                ),
+        if not existing_bill and total == 0:
+            continue
+
+        # Bill due on the 15th of the following month
+        due = datetime(end.year, end.month, 15, 23, 59)
+
+        if existing_bill:
+            # Don't overwrite already-paid bills
+            if existing_bill.is_paid:
+                continue
+
+            existing_bill.total_gyd = total
+            existing_bill.fee_gyd = fee
+            existing_bill.due_date = due
+        else:
+            bill = models.Bill(
+                provider_id=prov.id,
+                month=start,
+                total_gyd=total,
+                fee_gyd=fee,
+                due_date=due,
             )
+            db.add(bill)
 
     db.commit()
 
-    
+
+
 def get_provider_fees_due(db: Session, provider_id: int) -> float:
     """
     Sum of all unpaid fees for this provider, in GYD.
@@ -518,7 +543,30 @@ def list_bookings_for_customer(db: Session, customer_id: int):
 
     results = []
     for booking, service in rows:
-        results.append(
+                provider_name = ""
+                provider_location = ""
+                provider_lat = None
+                provider_long = None
+
+    if service:
+            provider = (
+                db.query(models.Provider)
+                .filter(models.Provider.id == service.provider_id)
+                .first()
+            )
+            if provider:
+                provider_user = (
+                    db.query(models.User)
+                    .filter(models.User.id == provider.user_id)
+                    .first()
+                )
+                if provider_user:
+                    provider_name = provider_user.full_name or ""
+                    provider_location = provider_user.location or ""
+                    provider_lat = provider_user.lat
+                    provider_long = provider_user.long
+
+    results.append(
             schemas.BookingWithDetails(
                 id=booking.id,
                 start_time=booking.start_time,
@@ -531,9 +579,14 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 else 0.0,
                 customer_name=user.full_name or "",
                 customer_phone=user.phone or "",
+                provider_name=provider_name,
+                provider_location=provider_location,
+                provider_lat=provider_lat,
+                provider_long=provider_long,
             )
         )
     return results
+
 
 def cancel_booking_for_customer(
     db: Session, booking_id: int, customer_id: int

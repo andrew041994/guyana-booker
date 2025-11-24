@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-  TouchableOpacity, Switch, } from "react-native";
+         TouchableOpacity, Switch, Linking, Platform,} from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
@@ -592,6 +592,49 @@ function ProfileScreen({ setToken, showFlash }) {
     );
   };
 
+  const handleNavigateToBooking = (booking) => {
+    try {
+      let url = "";
+
+      if (
+        booking.provider_lat != null &&
+        booking.provider_long != null
+      ) {
+        const dest = `${booking.provider_lat},${booking.provider_long}`;
+        if (Platform.OS === "ios") {
+          // Apple Maps on iOS
+          url = `http://maps.apple.com/?daddr=${dest}`;
+        } else {
+          // Google Maps / browser on Android
+          url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+        }
+      } else if (booking.provider_location) {
+        const q = encodeURIComponent(booking.provider_location);
+        if (Platform.OS === "ios") {
+          url = `http://maps.apple.com/?q=${q}`;
+        } else {
+          url = `https://www.google.com/maps/search/?api=1&query=${q}`;
+        }
+      } else {
+        if (showFlash) {
+          showFlash(
+            "error",
+            "No location is available yet for this booking."
+          );
+        }
+        return;
+      }
+
+      Linking.openURL(url);
+    } catch (err) {
+      console.log("Error opening maps", err);
+      if (showFlash) {
+        showFlash("error", "Could not open maps on this device.");
+      }
+    }
+  };
+
+
 
 
   return (
@@ -691,59 +734,51 @@ function ProfileScreen({ setToken, showFlash }) {
       )}
 
               {showBookings && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>My bookings</Text>
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>My bookings</Text>
 
-          {bookingsLoading && (
-            <View style={{ paddingVertical: 10 }}>
-              <ActivityIndicator />
-              <Text style={styles.serviceMeta}>Loading your bookings…</Text>
-            </View>
-          )}
+              {!bookingsLoading &&
+                !bookingsError &&
+            bookings.length > 0 && (
+              <>
+                {bookings.map((b) => (
+                  <View key={b.id} style={styles.myBookingRow}>
+                    <View style={styles.bookingMain}>
+                      <Text style={styles.bookingService}>{b.service_name}</Text>
+                      {b.provider_location ? (
+                        <Text style={styles.bookingMeta}>{b.provider_location}</Text>
+                      ) : null}
+                      <Text style={styles.bookingMeta}>Status: {b.status}</Text>
+                    </View>
 
-          {!bookingsLoading && bookingsError ? (
-            <Text style={styles.errorText}>{bookingsError}</Text>
-          ) : null}
-
-          {!bookingsLoading &&
-            !bookingsError &&
-            bookings.length === 0 && (
-              <Text style={styles.serviceHint}>
-                You have no bookings yet. Use the Search tab to book a service.
-              </Text>
-            )}
-
-          {!bookingsLoading &&
-              !bookingsError &&
-              bookings.length > 0 && (
-                <>
-                  {bookings.map((b) => (
-                    <View key={b.id} style={styles.bookingRow}>
-                      <View style={styles.bookingMain}>
-                        <Text style={styles.bookingTime}>
-                          {formatBookingDate(b.start_time)} ·{" "}
-                          {formatBookingTime(b.start_time)} –{" "}
-                          {formatBookingTime(b.end_time)}
-                        </Text>
-                        <Text style={styles.bookingService}>{b.service_name}</Text>
-                        <Text style={styles.bookingMeta}>Status: {b.status}</Text>
-                      </View>
-
-                      {b.status === "confirmed" && (
-                        <View style={styles.bookingActions}>
+                    {b.status === "confirmed" && (
+                      <View style={styles.myBookingActions}>
+                        {/* Centered pill button */}
+                        <View style={styles.navigateButtonContainer}>
                           <TouchableOpacity
-                            onPress={() => handleClientCancelBooking(b.id)}
+                            style={styles.navigateButton}
+                            onPress={() => handleNavigateToBooking(b)}
                           >
-                            <Text style={styles.bookingCancel}>Cancel</Text>
+                            <Text style={styles.navigateButtonText}>Navigate</Text>
                           </TouchableOpacity>
                         </View>
-                      )}
-                    </View>
-                  ))}
-                </>
-              )}
-            </View>     
-          )} 
+
+                        {/* Cancel text under the button */}
+                        <TouchableOpacity
+                          style={styles.myBookingCancelWrapper}
+                          onPress={() => handleClientCancelBooking(b.id)}
+                        >
+                          <Text style={styles.bookingCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </>
+            )}
+          </View>
+      )}
+
 
 
 
@@ -3379,6 +3414,50 @@ bookingCancel: {
   color: "#b91c1c",
   marginTop: 4,
 },
+
+  bookingNavigate: {
+    fontSize: 12,
+    color: "#0284C7", // blue-ish link color
+    marginTop: 4,
+  },
+
+  navigateButtonText: {
+  color: "#007AFF",      // or your theme color
+  fontSize: 16,
+  fontWeight: "600",
+  textDecorationLine: "none",  // remove underline / link style
+},
+
+navigateButton: {
+  paddingHorizontal: 14,
+  paddingVertical: 8,
+  backgroundColor: "#E6F5FF",
+  borderRadius: 8,
+  alignSelf: "flex-start",
+},
+
+navigateButtonContainer: {
+  marginTop: 12,
+  width: "100%",
+  alignItems: "center",
+},
+
+navigateButton: {
+  backgroundColor: "#007AFF",        // soft green background
+  paddingVertical: 10,
+  paddingHorizontal: 18,
+  borderRadius: 50,                 // pill shape
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+navigateButtonText: {
+  color: "#fff",                 // IOS blue
+  fontSize: 15,
+  fontWeight: "600",
+},
+
+
 
 mapContainer: {
   marginTop: 12,

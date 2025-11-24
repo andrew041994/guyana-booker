@@ -117,8 +117,16 @@ class BookingWithDetails(BaseModel):
     customer_name: str
     customer_phone: str
 
+    # NEW: provider info for navigation
+    provider_name: Optional[str] = None
+    provider_location: Optional[str] = None
+    provider_lat: Optional[float] = None
+    provider_long: Optional[float] = None
+
     class Config:
         from_attributes = True
+
+
 
 
 class BookingUpdate(BaseModel):
