@@ -1,7 +1,7 @@
+import os
 from datetime import datetime, timedelta, date
 from dateutil import tz
 from decimal import Decimal
-import os
 from typing import Optional, List
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -67,12 +67,17 @@ def get_provider_by_user_id(db: Session, user_id: int):
     return db.query(models.Provider).filter(models.Provider.user_id == user_id).first()
 
 def create_provider_for_user(db: Session, user: models.User):
-    provider = models.Provider(user_id=user.id, bio="")
-    account_number=generate_account_number_for_email(user.email),
+    """Create a provider for this user and assign an account number."""
+    provider = models.Provider(
+        user_id=user.id,
+        bio="",
+        account_number=generate_account_number_for_email(user.email),
+    )
     db.add(provider)
     db.commit()
     db.refresh(provider)
     return provider
+
 
 def list_services_for_provider(db: Session, provider_id: int):
     return (
@@ -134,6 +139,17 @@ def get_or_create_provider_for_user(db: Session, user_id: int) -> models.Provide
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     return create_provider_for_user(db, user)
+
+def delete_service(db: Session, provider_id: int, service_id: int) -> bool:
+    """
+    Backwards-compatible wrapper for deleting a service for a provider.
+    Called as crud.delete_service(db, provider.id, service_id) from routes.
+    """
+    return delete_service_for_provider(
+        db=db,
+        service_id=service_id,
+        provider_id=provider_id,
+    )
 
 
 def generate_account_number_for_email(email: str) -> str:
@@ -404,13 +420,16 @@ def generate_monthly_bills(db: Session, month: date):
     providers = db.query(models.Provider).all()
 
     # First day of this month
-    start = month.replace(day=1)
+    start_dt = datetime(start.year, start.month, start.day)
     # First day of the next month
-    end = (start + timedelta(days=32)).replace(day=1)
+    end_dt = datetime(end.year, end.month, end.day)
+
 
     now = datetime.utcnow()
+
     # Don't count future appointments that haven't ended yet
-    period_end = min(end, now)
+    period_end = min(end_dt, now)
+
 
     for prov in providers:
         # Total value of all completed confirmed bookings in this period

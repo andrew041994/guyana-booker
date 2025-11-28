@@ -15,10 +15,42 @@ class UserBase(BaseModel):
     lat: Optional[float] = None
     long: Optional[float] = None
 
+class User(UserBase):
+    id: int
+    is_provider: bool
+    expo_push_token: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    location: Optional[str] = None
+    expo_push_token: Optional[str] = None
+    lat: Optional[float] = None
+    long: Optional[float] = None
+
+class ProviderUpdate(BaseModel):
+    bio: Optional[str] = None
+    location: Optional[str] = None
+    whatsapp: Optional[str] = None
+    professions: Optional[List[str]] = None
+    lat: Optional[float] = None
+    long: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
 class UserCreate(UserBase):
     password: str
     is_provider: bool = False
     is_admin: bool = False   # 👈 add this
+
+
+class LoginByEmailPayload(BaseModel):
+    email: str
+    password: str
 
 
 class UserOut(UserBase):
@@ -35,6 +67,13 @@ class ServiceCreate(BaseModel):
     description: str
     price_gyd: float
     duration_minutes: int
+
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price_gyd: Optional[float] = None
+    duration_minutes: Optional[int] = None
+
 
 class ServiceOut(BaseModel):
     id: int
@@ -71,6 +110,13 @@ class WorkingHoursUpdate(WorkingHoursBase):
        start_time: Optional[str] = None  # "09:00"
        end_time: Optional[str] = None    # "17:00"# same fields as base; used for updates
        pass
+
+class ProviderWorkingHoursUpdate(BaseModel):
+    weekday: int                    # 0 = Monday, 6 = Sunday
+    is_closed: bool
+    start_time: Optional[str] = None  # "09:00"
+    end_time: Optional[str] = None    # "17:00"
+
 
 class BookingSummary(BaseModel):
     id: int
@@ -167,6 +213,14 @@ class UserProfileUpdate(BaseModel):
 class ProviderSummary(BaseModel):
     account_number: str
     total_fees_due_gyd: float
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    email: str
+    is_provider: bool
+    is_admin: bool
 
 
 

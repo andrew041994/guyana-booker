@@ -1,19 +1,35 @@
 import React, { useState, useEffect } from "react";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-         TouchableOpacity, Switch, Linking, Platform,} from "react-native";
+         TouchableOpacity, Switch, Linking, Platform } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
-import MapView, { Marker } from "react-native-maps";
+// ❌ remove direct import of react-native-maps
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+
+// ✅ add this block:
+// let MapView;
+// let Marker;
+
+// if (Platform.OS !== "web") {
+//   const RNMaps = require("react-native-maps");
+//   MapView = RNMaps.default;
+//   Marker = RNMaps.Marker;
+// } else {
+//   // Simple fallbacks so web doesn’t crash
+//   MapView = (props) => <View {...props} />;
+//   Marker = (props) => <View {...props} />;
+// }
+
 
 
 
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
+
 
 const ADMIN_EMAIL = "Alehandro.persaud@gmail.com";
 const PROFESSION_OPTIONS = [
@@ -111,19 +127,22 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
 
     await AsyncStorage.setItem("accessToken", res.data.access_token);
 
-        try {
-      const expoPushToken = await registerForPushNotificationsAsync();
-      if (expoPushToken) {
-        await axios.post(
-          `${API}/me/push-token`,
-          { expo_push_token: expoPushToken },
-          {
-            headers: {
-              Authorization: `Bearer ${res.data.access_token}`,
-            },
-          }
-        );
+      
+      try {
+        const expoPushToken = await registerForPushNotificationsAsync();
+        if (expoPushToken) {
+          // Update the logged-in user's push token in /users/me
+          await axios.put(
+            `${API}/users/me`,
+            { expo_push_token: expoPushToken },
+            {
+              headers: {
+                Authorization: `Bearer ${res.data.access_token}`,
+              },
+            }
+          );
       }
+
     } catch (err) {
       console.log("Failed to register push token", err);
     }
@@ -373,9 +392,9 @@ function ProfileScreen({ setToken, showFlash }) {
           return;
         }
 
-        const res = await axios.get(`${API}/me`, {
+        const res = await axios.get(`${API}/users/me`, {
           headers: {
-            Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           },
         });
 
@@ -431,11 +450,16 @@ function ProfileScreen({ setToken, showFlash }) {
         location: editProfile.location,
       };
 
-      const res = await axios.put(`${API}/me/profile`, payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+        const res = await axios.put(
+          `${API}/users/me`,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+      );
+
 
       // Refresh local user state so top card updates
       setUser((prev) => ({
@@ -523,11 +547,19 @@ function ProfileScreen({ setToken, showFlash }) {
         return;
       }
 
-      const res = await axios.get(`${API}/me/bookings`, {
+    const res = await axios.get(`${API}/bookings/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setBookings(res.data || []);
+
+      const rawBookings = res.data;
+      const bookingsList = Array.isArray(rawBookings)
+        ? rawBookings
+        : rawBookings?.bookings || rawBookings?.results || [];
+
+      setBookings(bookingsList);
+
+      // setBookings(res.data || []);
     } catch (err) {
       console.log("Error loading my bookings", err.response?.data || err.message);
       setBookingsError("Could not load your bookings.");
@@ -570,6 +602,7 @@ function ProfileScreen({ setToken, showFlash }) {
                   headers: { Authorization: `Bearer ${token}` },
                 }
               );
+
 
               // update local state so UI reflects cancellation
               setBookings((prev) =>
@@ -901,7 +934,7 @@ function SearchScreen({ token, showFlash }) {
   };
 
 
-  // Load providers on mount
+    // Load providers on mount
   useEffect(() => {
     const loadProviders = async () => {
       try {
@@ -909,13 +942,18 @@ function SearchScreen({ token, showFlash }) {
         setProvidersError("");
 
         const res = await axios.get(`${API}/providers`);
-        setProviders(res.data || []);
-        setFilteredProviders(res.data || []);
 
+        // Always normalize the result to an array
+        const list = Array.isArray(res.data)
+          ? res.data
+          : res.data?.providers || [];
+
+        setProviders(list);
+        setFilteredProviders(list);
       } catch (err) {
         console.log(
           "Error loading providers",
-          err.response?.data || err.message
+          err?.response?.data || err?.message
         );
         setProvidersError("Could not load providers.");
         if (showFlash) showFlash("error", "Could not load providers.");
@@ -924,8 +962,11 @@ function SearchScreen({ token, showFlash }) {
       }
     };
 
+    // actually run it on mount
     loadProviders();
   }, []);
+
+
 
 //Add a useEffect that recomputes filteredProviders 
 // whenever providers/search/radius/location changes:
@@ -938,18 +979,19 @@ function SearchScreen({ token, showFlash }) {
 
     const q = searchQuery.trim().toLowerCase();
 
-    let list = (providers || []).map((p) => {
-      let distance_km = null;
-      if (clientLocation && p.lat != null && p.long != null) {
-        distance_km = haversineKm(
-          clientLocation.lat,
-          clientLocation.long,
-          p.lat,
-          p.long
-        );
-      }
-      return { ...p, distance_km };
-    });
+    const providerList = Array.isArray(providers) ? providers : [];
+      let list = providerList.map((p) => {
+            let distance_km = null;
+          if (clientLocation && p.lat != null && p.long != null) {
+            distance_km = haversineKm(
+              clientLocation.lat,
+              clientLocation.long,
+              p.lat,
+              p.long
+            );
+          }
+          return { ...p, distance_km };
+        });
 
     // text filter (profession/name/location)
     if (q) {
@@ -1377,9 +1419,9 @@ function SearchScreen({ token, showFlash }) {
               </Text>
             )}
 
-          {!servicesLoading &&
+           {!servicesLoading &&
             !servicesError &&
-            services.map((s) => {
+            (Array.isArray(services) ? services : []).map((s) => {
               const isSelected =
                 selectedService && selectedService.id === s.id;
               return (
@@ -1593,34 +1635,7 @@ const [focusedHoursField, setFocusedHoursField] = useState(null);
 
 
 
-const loadServices = async () => {
-    try {
-      setLoading(true);
-      setServicesError("");
 
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
-        setServicesError("No access token found. Please log in again.");
-        return;
-      }
-
-      const res = await axios.get(`${API}/providers/me/services`, {
-        headers: {
-          Authorization: `Bearer ${storedToken}`,
-        },
-      });
-
-      setServices(res.data || []);
-    } catch (err) {
-      console.log("Error loading services", err.response?.data || err.message);
-      setServicesError("Could not load services.");
-      if (showFlash) {
-        showFlash("error", "Could not load services.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
     loadServices();
@@ -1682,72 +1697,52 @@ const loadWorkingHours = async () => {
       return;
     }
 
-    const res = await axios.get(`${API}/providers/me/hours`, {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
+    const res = await axios.get(`${API}/providers/me/working-hours`, {
+      headers: { Authorization: `Bearer ${storedToken}` },
     });
 
-    const rows = (res.data || [])
-      .slice()
-      .sort((a, b) => a.weekday - b.weekday)
-      .map((h) => {
-        let start24 = h.start_time;
-        let end24 = h.end_time;
+    const rows = Array.isArray(res.data) ? res.data : [];
 
-        if (!h.is_closed && !start24 && !end24) {
-          // only for brand-new empty rows
-          start24 = "09:00";
-          end24 = "17:00";
-        }
+    // Map backend fields -> local editable fields
+    const mapped = rows.map((row) => ({
+      ...row,
+      startLocal: row.start_time ? to12Hour(row.start_time) : "",
+      endLocal: row.end_time ? to12Hour(row.end_time) : "",
+    }));
 
-        return {
-          ...h,
-          startLocal: start24 ? to12Hour(start24) : "",
-          endLocal: end24 ? to12Hour(end24) : "",
-        };
-      });
-
-    setWorkingHours(rows);
+     setWorkingHours(mapped);
   } catch (err) {
     console.log(
-      "Error loading working hours",
+      "Error loading working hours:",
+      err.response?.status,
       err.response?.data || err.message
     );
-    setHoursError("Could not load working hours.");
-    if (showFlash) showFlash("error", "Could not load working hours.");
+    const detail =
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      "Could not load working hours.";
+    setHoursError(detail);
+    if (showFlash) showFlash("error", detail);
   } finally {
     setHoursLoading(false);
   }
 };
 
 
+
 const loadTodayBookings = async () => {
   try {
-    setTodayLoading(true);
-    setTodayError("");
-
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
-      setTodayError("No access token found. Please log in again.");
-      return;
-    }
-
-    const res = await axios.get(`${API}/providers/me/bookings/today`, {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
-    });
-
+    const token = await AsyncStorage.getItem("accessToken");
+    const res = await axios.get(
+      `${API}/providers/me/bookings/today`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     setTodayBookings(res.data || []);
-  } catch (err) {
-    console.log("Error loading today's bookings", err.response?.data || err.message);
-    setTodayError("Could not load today's bookings.");
-    if (showFlash) showFlash("error", "Could not load today's bookings.");
-  } finally {
-    setTodayLoading(false);
+  } catch (error) {
+    setTodayBookingsError(true);
   }
 };
+
 
 const handleCancelBooking = (bookingId) => {
   Alert.alert(
@@ -1809,6 +1804,41 @@ const handleEditBooking = (booking) => {
   // Next step: navigate to an Edit Booking screen or show a time picker.
 };
 
+const loadServices = async () => {
+    try {
+      setLoading(true);
+      setServicesError("");
+
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        setServicesError("No access token found. Please log in again.");
+        return;
+      }
+
+      const res = await axios.get(`${API}/providers/me/services`, {
+        headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+        // 🔒 Always normalize to an array
+    const rawServices = res.data;
+    const list = Array.isArray(rawServices)
+      ? rawServices
+      : rawServices?.services || rawServices?.results || [];
+
+    setServices(list || []);
+
+    } catch (err) {
+      console.log("Error loading services", err.response?.data || err.message);
+      setServicesError("Could not load services.");
+      if (showFlash) {
+        showFlash("error", "Could not load services.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
 const saveWorkingHours = async () => {
   try {
@@ -1879,11 +1909,11 @@ const saveWorkingHours = async () => {
       });
     }
 
-    await axios.post(`${API}/providers/me/hours`, payload, {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
+    
+    await axios.put(`${API}/providers/me/working-hours`, payload, {
+      headers: { Authorization: `Bearer ${storedToken}` },
     });
+
 
     // if (showFlash) showFlash("success", "Working hours saved");
     setHoursFlash({ type: "success", message: "Working hours saved" });
@@ -1995,48 +2025,67 @@ const to24Hour = (time12) => {
 
 
   const handleAddService = async () => {
-    if (!newName.trim()) {
-      if (showFlash) showFlash("error", "Service name is required");
+  if (!newName.trim()) {
+    if (showFlash) showFlash("error", "Service name is required");
+    return;
+  }
+
+  const priceNumber = newPrice ? Number(newPrice) : 0;
+  const durationNumber = newDuration ? Number(newDuration) : 30;
+
+  try {
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      if (showFlash) showFlash("error", "No access token found.");
       return;
     }
 
-    const priceNumber = newPrice ? Number(newPrice) : 0;
-    const durationNumber = newDuration ? Number(newDuration) : 30;
+    const payload = {
+      name: newName.trim(),
+      description: newDescription.trim(),
+      duration_minutes: durationNumber,
+      price_gyd: priceNumber,
+    };
 
-    try {
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
-        if (showFlash) showFlash("error", "No access token found.");
-        return;
-      }
-
-      const payload = {
-        name: newName.trim(),
-        description: newDescription.trim(),
-        duration_minutes: durationNumber,
-        price_gyd: priceNumber,
-      };
-
-      await axios.post(`${API}/providers/me/services`, payload, {
+    // ✅ Create service on backend and get the created record back
+    const res = await axios.post(
+      `${API}/providers/me/services`,
+      payload,
+      {
         headers: {
           Authorization: `Bearer ${storedToken}`,
         },
-      });
-
-      if (showFlash) {
-        showFlash("success", "Service created");
       }
+    );
 
-      resetForm();
-      setAdding(false);
-      loadServices();
-    } catch (err) {
-      console.log("Error creating service", err.response?.data || err.message);
-      if (showFlash) {
-        showFlash("error", "Could not create service.");
-      }
+    const created = res.data;
+
+    // ✅ Optimistically add to local list so it shows immediately
+    setServices((prev) => {
+      const prevArr = Array.isArray(prev) ? prev : [];
+      return [...prevArr, created];
+    });
+
+    if (showFlash) {
+      showFlash("success", "Service created");
     }
-  };
+
+    // Reset form + close add UI
+    resetForm();
+    setAdding(false);
+
+    // Optional: background refresh to stay in sync with backend
+    loadServices();
+  } catch (err) {
+    console.log("Error creating service", err.response?.data || err.message);
+    if (showFlash) {
+      const detail =
+        err.response?.data?.detail || "Could not create service.";
+      showFlash("error", detail);
+    }
+  }
+};
+
 
   const handleDeleteService = async (serviceId) => {
     try {
@@ -2127,22 +2176,27 @@ const saveProviderProfile = async () => {
       return;
     }
 
-        const payload = {
-          full_name: profile.full_name,
-          phone: profile.phone,
-          whatsapp: profile.whatsapp,
-          location: profile.location,
-          bio: profile.bio,
-          professions: profile.professions || [],
-        };
+    const payload = {
+      full_name: profile.full_name,
+      phone: profile.phone,
+      whatsapp: profile.whatsapp,
+      location: profile.location,
+      bio: profile.bio,
+      professions: profile.professions || [],
+    };
 
+    // ✅ Save provider profile to backend
+    const res = await axios.put(
+      `${API}/providers/me/profile`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${storedToken}`,
+        },
+      }
+    );
 
-    const res = await axios.put(`${API}/providers/me/profile`, payload, {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
-    });
-
+    // ✅ Update local state from server response so UI reflects what’s saved
     setProfile({
       full_name: res.data.full_name || "",
       phone: res.data.phone || "",
@@ -2150,44 +2204,38 @@ const saveProviderProfile = async () => {
       location: res.data.location || "",
       bio: res.data.bio || "",
       professions: res.data.professions || [],
-
     });
 
-    // if (showFlash) showFlash("success", "Provider profile saved");
-        setHoursFlash({ type: "success", message: "Provider profile saved" });
-        setTimeout(() => setHoursFlash(null), 2000);
+    // ✅ Show success flash in the green bar
+    setHoursFlash({ type: "success", message: "Provider profile saved" });
+    setTimeout(() => setHoursFlash(null), 2000);
+
+    if (showFlash) showFlash("success", "Provider profile saved");
   } catch (err) {
     console.log("Error saving provider profile", err.response?.data || err.message);
-    if (showFlash) showFlash("error", "Could not save provider profile.");
+
     setHoursFlash({ type: "error", message: "Provider profile not saved" });
-        setTimeout(() => setHoursFlash(null), 2000);
+    setTimeout(() => setHoursFlash(null), 2000);
+
+    if (showFlash) {
+      const detail =
+        err.response?.data?.detail || "Could not save provider profile.";
+      showFlash("error", detail);
+    }
   }
 };
 
+
 const loadUpcomingBookings = async () => {
   try {
-    setUpcomingLoading(true);
-    setUpcomingError("");
-
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
-      setUpcomingError("No access token found. Please log in again.");
-      return;
-    }
-
-    const res = await axios.get(`${API}/providers/me/bookings/upcoming`, {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
-    });
-
+    const token = await AsyncStorage.getItem("accessToken");
+    const res = await axios.get(
+      `${API}/providers/me/bookings/upcoming`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     setUpcomingBookings(res.data || []);
-  } catch (err) {
-    console.log("Error loading upcoming bookings", err.response?.data || err.message);
-    setUpcomingError("Could not load upcoming bookings.");
-    if (showFlash) showFlash("error", "Could not load upcoming bookings.");
-  } finally {
-    setUpcomingLoading(false);
+  } catch (error) {
+    setUpcomingBookingsError(true);
   }
 };
 
@@ -2212,9 +2260,10 @@ const sendLocationToServer = async () => {
 
   if (!loc) return;
 
-  await axios.post(`${API}/providers/me/location`, loc, {
+    await axios.put(`${API}/users/me`, loc, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
 };
 
 const handlePinLocation = async () => {
@@ -2240,7 +2289,7 @@ const handlePinLocation = async () => {
       return;
     }
 
-    await axios.post(`${API}/providers/me/location`, coords, {
+    await axios.put(`${API}/users/me`, coords, {
       headers: {
         Authorization: `Bearer ${storedToken}`,
       },
@@ -2265,7 +2314,7 @@ const loadProviderLocation = async () => {
     const storedToken = await AsyncStorage.getItem("accessToken");
     if (!storedToken) return;
 
-    const res = await axios.get(`${API}/me`, {
+     const res = await axios.get(`${API}/users/me`, {
       headers: {
         Authorization: `Bearer ${storedToken}`,
       },
@@ -2297,6 +2346,7 @@ const loadProviderSummary = async () => {
     );
   }
 };
+
 
 
 
@@ -2566,9 +2616,9 @@ const loadProviderSummary = async () => {
             </Text>
           )}
 
-          {!loading &&
+           {!loading &&
             !servicesError &&
-            services.map((s) => (
+            (Array.isArray(services) ? services : []).map((s) => (
               <View key={s.id} style={styles.serviceRow}>
                 <View style={{ flex: 1, paddingRight: 8 }}>
                   <Text style={styles.serviceName}>{s.name}</Text>
@@ -2941,7 +2991,7 @@ const loadProviderSummary = async () => {
 
           {providerLocation && (
             <View style={styles.mapContainer}>
-              <MapView
+              {/*<MapView
                 style={{ flex: 1 }}
                 pointerEvents="none"
                 initialRegion={{
@@ -2957,7 +3007,7 @@ const loadProviderSummary = async () => {
                     longitude: providerLocation.long,
                   }}
                 />
-              </MapView>
+              </MapView>*/}
             </View>
           )}
         </View>
