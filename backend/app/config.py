@@ -17,11 +17,17 @@ class Settings:
         # NEW logging level (this is all you add)
         self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
         
-        # Database
-        self.DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
+        # Database – 🔥 no more SQLite default
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise RuntimeError(
+                "DATABASE_URL is not set. "
+                "Set it to your PostgreSQL URL, e.g. "
+                "postgresql+psycopg2://postgres:postgres@localhost:8001/postgres"
+            )
+        self.DATABASE_URL: str = db_url
 
         # Auth / JWT
-        # Prefer JWT_SECRET_KEY but fall back to legacy JWT_SECRET if set
         legacy_secret = os.getenv("JWT_SECRET")
         self.JWT_SECRET_KEY: str = (
             os.getenv("JWT_SECRET_KEY") or legacy_secret or "dev-secret"
@@ -32,15 +38,12 @@ class Settings:
         )
 
         # CORS
-        # Provide a comma-separated list of allowed origins, e.g.:
-        # CORS_ALLOW_ORIGINS=https://bookitgy.com,https://app.bookitgy.com
         raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
         self.CORS_ALLOW_ORIGINS: List[str] = [
             origin.strip() for origin in raw_origins.split(",") if origin.strip()
         ]
 
         # Demo data seeding
-        # Enable only in development by default
         self.ENABLE_DEMO_SEED: bool = (
             os.getenv("ENABLE_DEMO_SEED", "true").lower() == "true"
         )
@@ -48,8 +51,5 @@ class Settings:
 
 @lru_cache()
 def get_settings() -> Settings:
-    """Return a cached Settings instance.
-
-    Using a cache avoids re-reading environment variables on every import.
-    """
+    """Return a cached Settings instance."""
     return Settings()

@@ -139,6 +139,9 @@ class ProviderProfileOut(BaseModel):
     location: str
     bio: Optional[str] = None
     professions: List[str] = []
+    avatar_url: Optional[str] = None   # 👈 NEW
+
+
 
 
 
@@ -149,6 +152,8 @@ class ProviderProfileUpdate(BaseModel):
     location: Optional[str] = None
     bio: Optional[str] = None
     professions: Optional[List[str]] = None
+    avatar_url: Optional[str] = None   # 👈 NEW
+
 
 
 class BookingWithDetails(BaseModel):

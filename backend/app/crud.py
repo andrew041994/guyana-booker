@@ -424,64 +424,53 @@ def create_booking(db: Session, booking: schemas.BookingCreate, customer_id: int
     db.commit()
     db.refresh(db_booking)
 
-    # WhatsApp notifications
+                    # WhatsApp (optional)
+                    # WhatsApp + push notifications
     customer = (
-        db.query(models.User)
-        .filter(models.User.id == customer_id)
-        .first()
-    )
+                db.query(models.User)
+                .filter(models.User.id == customer_id)
+                .first()
+            )
 
     if customer and provider_user:
-        send_whatsapp(
-            customer.whatsapp,
-            (
-                "Booking confirmed!\n"
-                f"{service.name} with {provider_user.full_name}\n"
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
-                f"GYD {service.price_gyd}"
-            ),
-        )
-        customer = (
-    db.query(models.User)
-    .filter(models.User.id == customer_id)
-    .first()
-)
+                # Customer: one confirmation message
+                send_whatsapp(
+                    customer.whatsapp,
+                    (
+                        "Booking confirmed!\n"
+                        f"{service.name} with {provider_user.full_name}\n"
+                        f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
+                        f"GYD {service.price_gyd}"
+                    ),
+                )
 
-            # WhatsApp (optional)
-        send_whatsapp(
-                customer.whatsapp,
-                (
-                    "Booking confirmed!\n"
-                    f"{service.name} with {provider_user.full_name}\n"
-                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
-                    f"GYD {service.price_gyd}"
-                ),
-            )
-        send_whatsapp(
-                provider_user.whatsapp,
-                (
-                    "New booking!\n"
-                    f"{customer.full_name} booked {service.name}\n"
-                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-                ),
-            )
+                # Provider: one "new booking" message
+                send_whatsapp(
+                    provider_user.whatsapp,
+                    (
+                        "New booking!\n"
+                        f"{customer.full_name} booked {service.name}\n"
+                        f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
+                    ),
+                )
 
-            # Push notifications
-        send_push(
-                customer.expo_push_token,
-                "Booking confirmed",
-                f"{service.name} with {provider_user.full_name} on "
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
-            )
+                # Push notifications (one each)
+                send_push(
+                    customer.expo_push_token,
+                    "Booking confirmed",
+                    f"{service.name} with {provider_user.full_name} on "
+                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+                )
 
-        send_push(
-                provider_user.expo_push_token,
-                "New booking",
-                f"{customer.full_name} booked {service.name} on "
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
-            )
+                send_push(
+                    provider_user.expo_push_token,
+                    "New booking",
+                    f"{customer.full_name} booked {service.name} on "
+                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+                )
 
     return db_booking
+
 
 
 # ---------------------------------------------------------------------------

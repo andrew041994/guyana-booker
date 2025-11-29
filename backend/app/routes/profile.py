@@ -89,6 +89,7 @@ def read_my_provider_profile(
         location=user.location or "",
         bio=provider.bio or "",
         professions=professions,
+        avatar_url=provider.avatar_url,  # 👈 NEW
     )
 
 
@@ -128,6 +129,9 @@ def update_my_provider_profile(
     if payload.bio is not None:
         provider.bio = payload.bio
 
+    if payload.avatar_url is not None:  # 👈 NEW
+        provider.avatar_url = payload.avatar_url
+
     # Update professions if provided
     if payload.professions is not None:
         professions = crud.set_professions_for_provider(
@@ -147,6 +151,7 @@ def update_my_provider_profile(
         location=user.location or "",
         bio=provider.bio or "",
         professions=professions,
+        avatar_url=provider.avatar_url,  # 👈 NEW
     )
 
 

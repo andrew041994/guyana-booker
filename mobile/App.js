@@ -232,7 +232,30 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [isProvider, setIsProvider] = useState(false); // 👈 new
 
   const signup = async () => {
-    if (password !== confirmPassword) {
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    const trimmedConfirm = confirmPassword.trim();
+    const trimmedUsername = username.trim();
+    const trimmedPhone = phone.trim();
+
+    // ✅ All fields required
+    if (
+      !trimmedUsername ||
+      !trimmedEmail ||
+      !trimmedPhone ||
+      !trimmedPassword ||
+      !trimmedConfirm
+    ) {
+      if (showFlash) {
+        showFlash("error", "Please fill in all fields");
+      } else {
+        Alert.alert("Error", "Please fill in all fields");
+      }
+      return;
+    }
+
+    // ✅ Passwords must match
+    if (trimmedPassword !== trimmedConfirm) {
       if (showFlash) {
         showFlash("error", "Passwords do not match");
       } else {
@@ -241,15 +264,37 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       return;
     }
 
+    // ✅ Normalize phone into WhatsApp format: whatsapp:+...
+    let whatsappValue = trimmedPhone;
+
+    // Strip existing 'whatsapp:' if user typed it
+    if (whatsappValue.startsWith("whatsapp:")) {
+      whatsappValue = whatsappValue.replace(/^whatsapp:/, "");
+    }
+
+    // Ensure it starts with +
+    if (!whatsappValue.startsWith("+")) {
+      // If it starts with 592, assume +592...
+      if (whatsappValue.startsWith("592")) {
+        whatsappValue = `+${whatsappValue}`;
+      } else {
+        // Fallback: just prefix +
+        whatsappValue = `+${whatsappValue}`;
+      }
+    }
+
+    // Final WhatsApp format
+    whatsappValue = `whatsapp:${whatsappValue}`;
+
     try {
       await axios.post(`${API}/auth/signup`, {
-        email,
-        password,
-        full_name: username,
-        phone,
+        email: trimmedEmail,
+        password: trimmedPassword,
+        full_name: trimmedUsername,
+        phone: trimmedPhone,          // plain phone as user entered
         location: "Georgetown",
-        whatsapp: `whatsapp:+592${phone}`,
-        is_provider: isProvider, // 👈 tell backend this is a provider
+        whatsapp: whatsappValue,      // normalized WhatsApp format
+        is_provider: isProvider,      // tell backend this is a provider
       });
 
       if (showFlash) {
@@ -269,6 +314,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       }
     }
   };
+
 
   return (
     <View style={styles.container}>
