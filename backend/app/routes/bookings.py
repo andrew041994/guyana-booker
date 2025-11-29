@@ -11,17 +11,17 @@ router = APIRouter(tags=["bookings"])
 
 
 @router.post("/bookings")
-def create_booking(
+def create_booking_for_me(
     booking_in: schemas.BookingCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user_from_header),
 ):
-    booking = crud.create_booking(db, current_user.id, booking_in)
-    if not booking:
-        raise HTTPException(
-            status_code=400,
-            detail="Unable to create booking (time slot may be unavailable)",
-        )
+    try:
+        booking = crud.create_booking(db, booking_in, customer_id=current_user.id)
+    except ValueError as e:
+        # bad time, slot already taken, etc.
+        raise HTTPException(status_code=400, detail=str(e))
+
     return booking
 
 
@@ -87,3 +87,21 @@ def cancel_booking_as_customer(
         raise HTTPException(status_code=404, detail="Booking not found")
 
     return {"status": "cancelled"}
+
+@router.get("/providers/me/bookings/today")
+def list_my_todays_bookings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    provider = crud.get_or_create_provider_for_user(db, current_user.id)
+    return crud.list_todays_bookings_for_provider(db, provider.id)
+
+
+@router.get("/providers/me/bookings/upcoming")
+def list_my_upcoming_bookings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    provider = crud.get_or_create_provider_for_user(db, current_user.id)
+    return crud.list_upcoming_bookings_for_provider(db, provider.id)
+

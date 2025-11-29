@@ -28,9 +28,10 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     whatsapp: Optional[str] = None
     location: Optional[str] = None
-    expo_push_token: Optional[str] = None
+
     lat: Optional[float] = None
     long: Optional[float] = None
+
 
 class ProviderUpdate(BaseModel):
     bio: Optional[str] = None
