@@ -3,8 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException, Header
 
-from app.database import SessionLocal
+from app.database import SessionLocal, get_db, Base, engine
 from app.workers.cron import registerCronJobs
 from app.config import get_settings
 from app import crud, schemas
@@ -75,14 +76,15 @@ def _seed_demo_users() -> None:
 
 
 @app.on_event("startup")
-def on_startup() -> None:
-    """
-    FastAPI startup hook:
-    - seeds demo users (in dev only)
-    - starts the APScheduler background scheduler
-    """
-    _seed_demo_users()
+def on_startup():
+    # 1) Make sure all tables exist
+    Base.metadata.create_all(bind=engine)
+
+    # 2) Start background jobs
     start_scheduler()
+
+    # 3) Seed demo users in dev, if enabled
+    _seed_demo_users()
 
 
 # CORS
@@ -104,6 +106,37 @@ app.add_middleware(
 @app.get("/")
 def root():
     return {"message": "Guyana Booker API running"}
+
+@app.put("/providers/me/location")
+def update_my_location(
+    payload: dict,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    lat = payload.get("lat")
+    long = payload.get("long")
+    location = payload.get("location")  # optional
+
+    if lat is None or long is None:
+        raise HTTPException(status_code=400, detail="lat and long are required")
+
+    # update
+    user.lat = float(lat)
+    user.long = float(long)
+    if location is not None:
+        user.location = location
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "status": "updated",
+        "lat": user.lat,
+        "long": user.long,
+        "location": user.location,
+    }
 
 
 # Routers

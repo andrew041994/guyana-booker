@@ -11,6 +11,8 @@ import requests
 import hashlib
 from sqlalchemy import func
 from . import models, schemas
+from typing import Optional
+
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +79,48 @@ def create_provider_for_user(db: Session, user: models.User):
     db.commit()
     db.refresh(provider)
     return provider
+
+def list_providers(db: Session, profession: Optional[str] = None):
+    """
+    Public list of providers for the client search screen.
+    Optionally filter by profession name (case-insensitive).
+    Returns a list of ProviderListItem structures.
+    """
+    # Base query joining providers → users
+    q = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+    )
+
+    # Optional filter by profession
+    if profession:
+        q = (
+            q.join(
+                models.ProviderProfession,
+                models.ProviderProfession.provider_id == models.Provider.id,
+            )
+            .filter(models.ProviderProfession.name.ilike(f"%{profession}%"))
+        )
+
+    rows = q.all()
+
+    results = []
+    for provider, user in rows:
+        professions = get_professions_for_provider(db, provider.id)
+
+        results.append(
+            {
+                "provider_id": provider.id,
+                "name": user.full_name or "",
+                "location": user.location or "",
+                "lat": user.lat,
+                "long": user.long,
+                "bio": provider.bio or "",
+                "professions": professions,
+            }
+        )
+
+    return results
 
 
 def list_services_for_provider(db: Session, provider_id: int):
@@ -150,6 +194,18 @@ def delete_service(db: Session, provider_id: int, service_id: int) -> bool:
         service_id=service_id,
         provider_id=provider_id,
     )
+
+def update_provider_location(db: Session, provider_id: int, lat: float, long: float):
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    if not provider:
+        return None
+
+    provider.lat = lat
+    provider.long = long
+
+    db.commit()
+    db.refresh(provider)
+    return provider
 
 
 def generate_account_number_for_email(email: str) -> str:
@@ -226,6 +282,32 @@ def authenticate_user(db: Session, email: str, password: str):
         return None
 
     return user
+
+def update_user(
+    db: Session,
+    user_id: int,
+    user_update: schemas.UserUpdate,
+) -> Optional[models.User]:
+    """
+    Partially update a user using fields from UserUpdate.
+    Only fields that are actually provided (exclude_unset=True) are changed.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+
+    # Only apply fields that were sent in the request
+    update_data = user_update.dict(exclude_unset=True)
+
+    for field, value in update_data.items():
+        # Make sure the User model actually has this attribute
+        if hasattr(user, field):
+            setattr(user, field, value)
+
+    db.commit()
+    db.refresh(user)
+    return user
+
 
 
 # ---------------------------------------------------------------------------
@@ -420,16 +502,21 @@ def generate_monthly_bills(db: Session, month: date):
     providers = db.query(models.Provider).all()
 
     # First day of this month
-    start_dt = datetime(start.year, start.month, start.day)
-    # First day of the next month
-    end_dt = datetime(end.year, end.month, end.day)
+    start = date(month.year, month.month, 1)
 
+    # First day of the next month
+    if month.month == 12:
+        next_month = date(month.year + 1, 1, 1)
+    else:
+        next_month = date(month.year, month.month + 1, 1)
+
+    start_dt = datetime(start.year, start.month, start.day)
+    end_dt = datetime(next_month.year, next_month.month, next_month.day)
 
     now = datetime.utcnow()
 
     # Don't count future appointments that haven't ended yet
     period_end = min(end_dt, now)
-
 
     for prov in providers:
         # Total value of all completed confirmed bookings in this period
@@ -440,7 +527,7 @@ def generate_monthly_bills(db: Session, month: date):
                 models.Booking.service_id == models.Service.id,
                 models.Service.provider_id == prov.id,
                 models.Booking.status == "confirmed",
-                models.Booking.end_time >= start,
+                models.Booking.end_time >= start_dt,
                 models.Booking.end_time < period_end,
             )
             .scalar()
@@ -463,7 +550,7 @@ def generate_monthly_bills(db: Session, month: date):
             continue
 
         # Bill due on the 15th of the following month
-        due = datetime(end.year, end.month, 15, 23, 59)
+        due = datetime(next_month.year, next_month.month, 15, 23, 59)
 
         if existing_bill:
             # Don't overwrite already-paid bills
@@ -484,6 +571,8 @@ def generate_monthly_bills(db: Session, month: date):
             db.add(bill)
 
     db.commit()
+
+
 
 
 
@@ -1050,6 +1139,37 @@ def list_upcoming_bookings_for_provider(
         )
     return results
 
+
+def update_provider(
+    db: Session,
+    provider_id: int,
+    provider_update: schemas.ProviderUpdate,
+) -> Optional[models.Provider]:
+    """
+    Partially update a provider using fields from ProviderUpdate.
+    Only fields that are actually provided (exclude_unset=True) are changed.
+    """
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+    if not provider:
+        return None
+
+    update_data = provider_update.dict(exclude_unset=True)
+
+    # professions is handled via the ProviderProfession join table,
+    # so for now we ignore it here (or you can add custom logic).
+    professions = update_data.pop("professions", None)
+
+    for field, value in update_data.items():
+        if hasattr(provider, field):
+            setattr(provider, field, value)
+
+    db.commit()
+    db.refresh(provider)
+    return provider
 
 
 # def cancel_booking_for_provider(

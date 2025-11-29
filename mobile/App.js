@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
          TouchableOpacity, Switch, Linking, Platform } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
@@ -11,24 +12,24 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 
-// ✅ add this block:
-// let MapView;
-// let Marker;
-
-// if (Platform.OS !== "web") {
-//   const RNMaps = require("react-native-maps");
-//   MapView = RNMaps.default;
-//   Marker = RNMaps.Marker;
-// } else {
-//   // Simple fallbacks so web doesn’t crash
-//   MapView = (props) => <View {...props} />;
-//   Marker = (props) => <View {...props} />;
-// }
-
-
 
 
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
+console.log("### API base URL =", API);
+
+// ✅ add this block:
+let MapView;
+let Marker;
+
+if (Platform.OS !== "web") {
+  const RNMaps = require("react-native-maps");
+  MapView = RNMaps.default;
+  Marker = RNMaps.Marker;
+} else {
+  // Simple fallbacks so web doesn’t crash
+  MapView = (props) => <View {...props} />;
+  Marker = (props) => <View {...props} />;
+}
 
 
 const ADMIN_EMAIL = "Alehandro.persaud@gmail.com";
@@ -74,16 +75,21 @@ async function registerForPushNotificationsAsync() {
       Constants?.expoConfig?.extra?.eas?.projectId ??
       Constants?.easConfig?.projectId;
 
-    const tokenData = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
+    if (!projectId) {
+      console.log(
+        'No "projectId" found in Constants – skipping push token registration in this dev build.'
+      );
+      return null;
+    }
 
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     return tokenData.data;
   } catch (err) {
     console.log("Error getting push token", err);
     return null;
   }
 }
+
 
 
 
@@ -828,28 +834,6 @@ function ProfileScreen({ setToken, showFlash }) {
             </Text>
           </TouchableOpacity>
 
-
-        {isProvider && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleComingSoon("Manage services")}
-          >
-            <Text style={styles.actionButtonText}>Manage services</Text>
-          </TouchableOpacity>
-        )}
-
-            {!isAdmin && (
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={toggleMyBookings}
-                >
-                  <Text style={styles.actionButtonText}>
-                    {showBookings ? "Hide my bookings" : "My bookings"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-
         {isAdmin && (
           <TouchableOpacity
             style={styles.actionButton}
@@ -1590,7 +1574,7 @@ function SearchScreen({ token, showFlash }) {
 // }
 
 function ProviderDashboardScreen({ token, showFlash }) {
-  const providerLabel = token?.email || "Provider";
+  // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [servicesError, setServicesError] = useState("");
@@ -1619,6 +1603,12 @@ function ProviderDashboardScreen({ token, showFlash }) {
   professions: [],
 });
 
+const providerLabel =
+  (profile?.full_name && profile.full_name.trim()) ||
+  token?.email ||
+  "Provider";
+
+
 const [customProfession, setCustomProfession] = useState("");
 const [providerSummary, setProviderSummary] = useState(null);
 const [todayBookings, setTodayBookings] = useState([]);
@@ -1645,10 +1635,25 @@ const [focusedHoursField, setFocusedHoursField] = useState(null);
     loadUpcomingBookings(); 
     loadProviderLocation(); 
     loadProviderSummary();
+    loadProviderProfile();
 
 
 
   }, []);
+
+  useFocusEffect(
+  useCallback(() => {
+    // Re-fetch profile (and anything else you want live-updated)
+    loadProviderProfile();
+    // optional: also refresh bookings, summary, etc.
+    // loadTodayBookings();
+    // loadUpcomingBookings();
+    // loadProviderSummary();
+
+    // No cleanup needed
+    return () => {};
+  }, [])
+);
 
 const resetForm = () => {
     setNewName("");
@@ -1797,12 +1802,12 @@ const handleCancelBooking = (bookingId) => {
 };
 
 
-const handleEditBooking = (booking) => {
-  if (showFlash) {
-    showFlash("info", "Editing bookings will be added soon.");
-  }
-  // Next step: navigate to an Edit Booking screen or show a time picker.
-};
+// const handleEditBooking = (booking) => {
+//   if (showFlash) {
+//     showFlash("info", "Editing bookings will be added soon.");
+//   }
+//   // Next step: navigate to an Edit Booking screen or show a time picker.
+// };
 
 const loadServices = async () => {
     try {
@@ -2254,48 +2259,40 @@ const getCurrentLocation = async () => {
   };
 };
 
-const sendLocationToServer = async () => {
-  const token = await AsyncStorage.getItem("accessToken");
-  const loc = await getCurrentLocation();
-
-  if (!loc) return;
-
-    await axios.put(`${API}/users/me`, loc, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-};
 
 const handlePinLocation = async () => {
   try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
+    const token = await AsyncStorage.getItem("accessToken");
+    if (!token) {
+      if (showFlash) showFlash("error", "No access token found. Please log in again.");
+      return;
+    }
+
+    const coords = await getCurrentLocation();
+    if (!coords) {
       Alert.alert(
         "Permission needed",
         "Location permission is required to pin your business on the map."
       );
+      if (showFlash) showFlash("error", "Location permission denied.");
       return;
     }
 
-    const loc = await Location.getCurrentPositionAsync({});
-    const coords = {
-      lat: loc.coords.latitude,
-      long: loc.coords.longitude,
-    };
+    // 1) update the user record
+    await axios.put(
+      `${API}/users/me`,
+      { lat: coords.lat, long: coords.long },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
-      if (showFlash) showFlash("error", "No access token found.");
-      return;
-    }
+    // 2) ALSO update the provider record so searches & client view use it
+    await axios.put(
+      `${API}/providers/me`,
+      { lat: coords.lat, long: coords.long },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-    await axios.put(`${API}/users/me`, coords, {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
-    });
-
-    // Update local state so map updates immediately
+    // 3) update local state so preview uses the latest coords
     setProviderLocation(coords);
 
     if (showFlash) showFlash("success", "Business location pinned here.");
@@ -2305,7 +2302,13 @@ const handlePinLocation = async () => {
     );
   } catch (err) {
     console.log("Error pinning location", err.response?.data || err.message);
-    if (showFlash) showFlash("error", "Could not pin business location.");
+    if (showFlash) {
+      const msg =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        "Could not pin business location.";
+      showFlash("error", msg);
+    }
   }
 };
 
@@ -2444,9 +2447,9 @@ const loadProviderSummary = async () => {
                     </View>
 
                     <View style={styles.bookingActions}>
-                      <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                      {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
                         <Text style={styles.bookingEdit}>Edit</Text>
-                      </TouchableOpacity>
+                      </TouchableOpacity> */}
                       <TouchableOpacity
                         onPress={() => handleCancelBooking(b.id)}
                       >
@@ -2524,9 +2527,9 @@ const loadProviderSummary = async () => {
                       </View>
 
                       <View style={styles.bookingActions}>
-                        <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                        {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
                           <Text style={styles.bookingEdit}>Edit</Text>
-                        </TouchableOpacity>
+                        </TouchableOpacity> */}
                         <TouchableOpacity
                           onPress={() => handleCancelBooking(b.id)}
                         >
@@ -2991,23 +2994,24 @@ const loadProviderSummary = async () => {
 
           {providerLocation && (
             <View style={styles.mapContainer}>
-              {/*<MapView
-                style={{ flex: 1 }}
-                pointerEvents="none"
-                initialRegion={{
-                  latitude: providerLocation.lat,
-                  longitude: providerLocation.long,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                }}
-              >
-                <Marker
-                  coordinate={{
+                <MapView
+                  style={{ flex: 1 }}
+                  pointerEvents="none"
+                  initialRegion={{
                     latitude: providerLocation.lat,
                     longitude: providerLocation.long,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
                   }}
-                />
-              </MapView>*/}
+                >
+                  <Marker
+                    coordinate={{
+                      latitude: providerLocation.lat,
+                      longitude: providerLocation.long,
+                    }}
+                    title="Your business location"
+                  />
+                </MapView>
             </View>
           )}
         </View>

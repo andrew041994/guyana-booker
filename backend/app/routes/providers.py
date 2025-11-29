@@ -135,7 +135,7 @@ def get_my_provider_summary(
 
     return {
         "account_number": provider.account_number,
-        "total_fees_due": total_fees_due,
+        "total_fees_due_gyd": float(total_fees_due or 0.0),
     }
 
 
@@ -162,3 +162,48 @@ def get_provider(provider_id: int, db: Session = Depends(get_db)):
 @router.get("/providers/{provider_id}/services")
 def list_provider_services(provider_id: int, db: Session = Depends(get_db)):
     return crud.list_services_for_provider(db, provider_id)
+
+@router.get(
+    "/providers/{provider_id}/availability",
+    response_model=List[schemas.ProviderAvailabilityDay],
+)
+def get_provider_availability_route(
+    provider_id: int,
+    service_id: int,
+    days: int = 14,
+    db: Session = Depends(get_db),
+):
+    """
+    Availability for a specific provider + service over the next `days`.
+    Used by the client calendar/time slot picker.
+    """
+    try:
+        availability = crud.get_provider_availability(
+            db,
+            provider_id=provider_id,
+            service_id=service_id,
+            days=days,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return availability
+
+
+@router.put("/providers/me")
+def update_my_provider_location(
+    payload: schemas.ProviderUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    provider = crud.get_or_create_provider_for_user(db, current_user.id)
+
+    # Only update lat/long if provided
+    if payload.lat is not None:
+        provider.lat = payload.lat
+    if payload.long is not None:
+        provider.long = payload.long
+
+    db.commit()
+    db.refresh(provider)
+    return provider
