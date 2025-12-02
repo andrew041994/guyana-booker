@@ -35,12 +35,11 @@ class UserUpdate(BaseModel):
 
 class ProviderUpdate(BaseModel):
     bio: Optional[str] = None
-    location: Optional[str] = None
+    location: Optional[str] = None  # human-readable address / area
     whatsapp: Optional[str] = None
     professions: Optional[List[str]] = None
-    lat: Optional[float] = None
-    long: Optional[float] = None
     is_active: Optional[bool] = None
+
 
 
 class UserCreate(UserBase):

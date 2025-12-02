@@ -672,13 +672,14 @@ function ProfileScreen({ setToken, showFlash, token }) {
                 return;
               }
 
-              await axios.post(
-                `${API}/me/bookings/${bookingId}/cancel`,
-                {},
-                {
-                  headers: { Authorization: `Bearer ${token}` },
-                }
-              );
+                  await axios.post(
+                    `${API}/bookings/${bookingId}/cancel`,
+                    {},
+                    {
+                      headers: { Authorization: `Bearer ${token}` },
+                    }
+                  );
+
 
 
               // update local state so UI reflects cancellation
@@ -919,24 +920,41 @@ function ProfileScreen({ setToken, showFlash, token }) {
       <View style={styles.actionsContainer}>
         <Text style={styles.sectionTitle}>Actions</Text>
 
-          <TouchableOpacity
-              style={styles.actionButton}
-              onPress={toggleEditProfile}
-          >
+        {/* Edit profile */}
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={toggleEditProfile}
+        >
           <Text style={styles.actionButtonText}>
-              {showEdit ? "Hide edit profile" : "Edit profile"}
-            </Text>
-          </TouchableOpacity>
+            {showEdit ? "Hide edit profile" : "Edit profile"}
+          </Text>
+        </TouchableOpacity>
 
-        {isAdmin && (
+        {/* My bookings – only for clients (non-providers) */}
+        {!isProvider && (
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => handleComingSoon("Admin dashboard")}
+            onPress={toggleMyBookings}
           >
-            <Text style={styles.actionButtonText}>Admin dashboard</Text>
+            <Text style={styles.actionButtonText}>
+              {showBookings ? "Hide my bookings" : "My bookings"}
+            </Text>
           </TouchableOpacity>
         )}
 
+        {/* Admin tools */}
+        {isAdmin && (
+          <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleComingSoon("Admin dashboard")}
+            >
+            <Text style={styles.actionButtonText}>Admin dashboard</Text>
+          
+          
+          </TouchableOpacity>
+        )}
+
+        {/* Logout */}
         <TouchableOpacity
           style={[styles.actionButton, styles.logoutButton]}
           onPress={logout}
@@ -946,6 +964,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
           </Text>
         </TouchableOpacity>
       </View>
+
     </ScrollView>
     
   );

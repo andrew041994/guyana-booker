@@ -235,19 +235,33 @@ def get_provider_availability_route(
 
 
 @router.put("/providers/me")
-def update_my_provider_location(
+def update_my_provider_profile(
     payload: schemas.ProviderUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user_from_header),
 ):
+    """
+    Update provider profile fields (bio, location text, whatsapp, is_active, professions).
+
+    Coordinate updates (lat/long) are handled exclusively by /providers/me/location
+    with proper validation, so they are NOT accepted here.
+    """
     provider = crud.get_or_create_provider_for_user(db, current_user.id)
 
-    # Only update lat/long if provided
-    if payload.lat is not None:
-        provider.lat = payload.lat
-    if payload.long is not None:
-        provider.long = payload.long
+    # Update provider row via CRUD helper
+    updated = crud.update_provider(db, provider.id, payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # Optionally keep user's contact info in sync
+    if payload.location is not None:
+        current_user.location = payload.location
+    if payload.whatsapp is not None:
+        current_user.whatsapp = payload.whatsapp
 
     db.commit()
-    db.refresh(provider)
-    return provider
+    db.refresh(updated)
+    db.refresh(current_user)
+
+    return updated
+
