@@ -227,5 +227,10 @@ class TokenResponse(BaseModel):
     is_provider: bool
     is_admin: bool
 
+class ProviderLocationUpdate(BaseModel):
+    lat: float
+    long: float
+    location: Optional[str] = None  # optional human-readable text
+
 
 

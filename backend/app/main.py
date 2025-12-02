@@ -1,7 +1,5 @@
 import os
-from typing import Dict, Any
-
-from fastapi import FastAPI, Depends, Header, HTTPException
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -102,20 +100,21 @@ app.include_router(profile_routes.router)
 
 # -------------------------------------------------------------------
 # Provider location endpoint (restricted & validated)
-# -------------------------------------------------------------------
+# -------------------------------------------------
+# ------------------
+
 @app.put("/providers/me/location")
 def update_my_location(
-    payload: Dict[str, Any],
-    authorization: str = Header(None),
+    payload: schemas.ProviderLocationUpdate,
     db: Session = Depends(get_db),
-):
+    current_user: models.User = Depends(get_current_user_from_header),
+    ):
     """
-    Allow a *provider* to update their public location (lat/long + optional text).
+    Allow a provider to update their public location (lat/long + optional text).
+    Uses Pydantic validation and standard FastAPI authentication.
+    """
 
-    - Only works for users who are providers.
-    - Validates latitude/longitude bounds.
-    """
-    user = get_current_user_from_header(authorization, db)
+    user = current_user
 
     if not getattr(user, "is_provider", False):
         raise HTTPException(
@@ -123,23 +122,11 @@ def update_my_location(
             detail="Only providers can update their pinned location.",
         )
 
-    lat = payload.get("lat")
-    long = payload.get("long")
-    location = payload.get("location")  # optional
+    lat_f = payload.lat
+    long_f = payload.long
+    location = payload.location
 
-    if lat is None or long is None:
-        raise HTTPException(status_code=400, detail="lat and long are required")
-
-    # Parse & validate
-    try:
-        lat_f = float(lat)
-        long_f = float(long)
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=400,
-            detail="lat and long must be numeric values",
-        )
-
+    # Validate ranges
     if not (-90.0 <= lat_f <= 90.0):
         raise HTTPException(
             status_code=400,
@@ -153,18 +140,17 @@ def update_my_location(
 
     user.lat = lat_f
     user.long = long_f
-    if location is not None:
-        user.location = location
+    user.location = location
 
     db.commit()
     db.refresh(user)
 
     return {
-        "status": "updated",
         "lat": user.lat,
         "long": user.long,
         "location": user.location,
     }
+
 
 
 # -------------------------------------------------------------------
