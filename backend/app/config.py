@@ -6,6 +6,7 @@ from dotenv import load_dotenv, find_dotenv
 # Load the nearest .env file (root .env or backend/.env)
 load_dotenv(find_dotenv(), override=False)
 
+
 class Settings:
     """Application configuration loaded from environment variables.
 
@@ -14,13 +15,19 @@ class Settings:
     """
 
     def __init__(self) -> None:
-    # Environment: dev, test, prod
+        # -----------------------------
+        # Environment: dev, test, prod
+        # -----------------------------
         self.ENV: str = os.getenv("ENV", "dev").lower()
 
-        # NEW logging level
+        # -----------------------------
+        # Logging
+        # -----------------------------
         self.LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
-        
-        # Database – 🔥 no more SQLite default allowed
+
+        # -----------------------------
+        # Database – NO SQLite default
+        # -----------------------------
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
             raise RuntimeError(
@@ -30,83 +37,70 @@ class Settings:
             )
         self.DATABASE_URL: str = db_url
 
-    # -----------------------------
-    # 🔐 AUTH / JWT — STRONG SECRET REQUIRED IN PROD
-    # -----------------------------
-               # Auth / JWT
+        # -----------------------------
+        # 🔐 AUTH / JWT — STRONG SECRET REQUIRED
+        # -----------------------------
         legacy_secret = os.getenv("JWT_SECRET")
         env_secret = os.getenv("JWT_SECRET_KEY") or legacy_secret
 
-        if self.ENV == "dev":
-            # Dev is allowed to fall back to a weak default for convenience
-            self.JWT_SECRET_KEY: str = env_secret or "dev-secret"
-        else:
-            # Any non-dev environment MUST have a strong secret
-            if not env_secret or len(env_secret) < 32:
-                raise RuntimeError(
-                    "JWT secret is not set or is too weak for non-dev environment. "
-                    "Set JWT_SECRET_KEY (or legacy JWT_SECRET) to a strong value "
-                    "at least 32 characters long."
-                )
-            self.JWT_SECRET_KEY: str = env_secret
+        # Require a strong JWT secret in ALL environments
+        if not env_secret or len(env_secret) < 32:
+            raise RuntimeError(
+                "JWT secret is not set or is too weak. "
+                "Set JWT_SECRET_KEY (or legacy JWT_SECRET) to a strong value "
+                "at least 32 characters long."
+            )
 
+        self.JWT_SECRET_KEY: str = env_secret
+        self.JWT_ALGORITHM: str = "HS256"
+        self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+            os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
+        )
 
         # -----------------------------
         # 🌐 CORS — EXPLICIT ORIGINS ONLY
         # -----------------------------
-                # CORS
         raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
+        if not raw_origins:
+            raise RuntimeError(
+                "CORS_ALLOW_ORIGINS is not set. "
+                "Set it to a comma-separated list of allowed origins."
+            )
 
-        if raw_origins:
-            parsed_origins = [
-                origin.strip()
-                for origin in raw_origins.split(",")
-                if origin.strip()
-            ]
+        parsed_origins = [
+            origin.strip()
+            for origin in raw_origins.split(",")
+            if origin.strip()
+        ]
 
-            # Disallow wildcard CORS in any non-dev environment
-            if any(o == "*" for o in parsed_origins) and self.ENV != "dev":
-                raise RuntimeError(
-                    "CORS_ALLOW_ORIGINS cannot contain '*' when ENV is not 'dev'. "
-                    "Use explicit origins instead."
-                )
-        else:
-            # Explicit safe defaults for dev/test
-            if self.ENV in ("dev", "test"):
-                parsed_origins = [
-                    "http://localhost:3000",
-                    "http://127.0.0.1:3000",
-                    "http://localhost:5173",
-                    "http://127.0.0.1:5173",
-                    "http://localhost:19006",
-                    "http://127.0.0.1:19006",
-                ]
-            else:
-                # In prod/other, missing CORS config is an error
-                raise RuntimeError(
-                    "CORS_ALLOW_ORIGINS is not set for this environment. "
-                    "Set it to a comma-separated list of allowed origins."
-                )
+        # Forbid wildcard CORS completely
+        if any(o == "*" for o in parsed_origins):
+            raise RuntimeError(
+                "CORS_ALLOW_ORIGINS cannot contain '*'. "
+                "Use explicit origins instead."
+            )
 
         self.CORS_ALLOW_ORIGINS: List[str] = parsed_origins
 
-        # Demo data seeding – OFF by default, must be explicitly enabled
+        # -----------------------------
+        # Demo data seeding – OFF by default
+        # -----------------------------
+        # Only used by _seed_demo_users in main.py, and that function also
+        # checks ENV == "dev". So seeding only runs in isolated dev when
+        # ENABLE_DEMO_SEED=true is explicitly set.
         self.ENABLE_DEMO_SEED: bool = (
             os.getenv("ENABLE_DEMO_SEED", "false").lower() == "true"
         )
 
-
         # -----------------------------
-        # Cloudinary
+        # Cloudinary (for image uploads)
         # -----------------------------
         self.CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
         self.CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
         self.CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
         self.CLOUDINARY_UPLOAD_FOLDER: str = os.getenv(
-        "CLOUDINARY_UPLOAD_FOLDER", "bookitgy/avatars"
-    )
-
-
+            "CLOUDINARY_UPLOAD_FOLDER", "bookitgy/avatars"
+        )
 
 
 @lru_cache()
