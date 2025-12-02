@@ -33,57 +33,68 @@ class Settings:
     # -----------------------------
     # 🔐 AUTH / JWT — STRONG SECRET REQUIRED IN PROD
     # -----------------------------
+               # Auth / JWT
         legacy_secret = os.getenv("JWT_SECRET")
         env_secret = os.getenv("JWT_SECRET_KEY") or legacy_secret
 
-        if self.ENV == "prod":
-            # Require a strong secret
+        if self.ENV == "dev":
+            # Dev is allowed to fall back to a weak default for convenience
+            self.JWT_SECRET_KEY: str = env_secret or "dev-secret"
+        else:
+            # Any non-dev environment MUST have a strong secret
             if not env_secret or len(env_secret) < 32:
                 raise RuntimeError(
-                    "JWT secret missing or too weak for production. "
-                    "Set JWT_SECRET_KEY (or legacy JWT_SECRET) to a strong value."
+                    "JWT secret is not set or is too weak for non-dev environment. "
+                    "Set JWT_SECRET_KEY (or legacy JWT_SECRET) to a strong value "
+                    "at least 32 characters long."
                 )
-            self.JWT_SECRET_KEY = env_secret
-        else:
-            # Dev/test fallback allowed
-            self.JWT_SECRET_KEY = env_secret or "dev-secret"
+            self.JWT_SECRET_KEY: str = env_secret
 
-            self.JWT_ALGORITHM: str = "HS256"
-            self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-                os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
-        )
 
         # -----------------------------
         # 🌐 CORS — EXPLICIT ORIGINS ONLY
         # -----------------------------
+                # CORS
         raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 
         if raw_origins:
-            parsed = [o.strip() for o in raw_origins.split(",") if o.strip()]
-        else:
-            if self.ENV == "prod":
-                raise RuntimeError(
-                    "CORS_ALLOW_ORIGINS is required in production "
-                    "and must contain one or more allowed origins."
-                )
-            # Dev defaults — safe localhost list (NO WILDCARD)
-            parsed = [
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:19006",
-                "http://127.0.0.1:19006",
+            parsed_origins = [
+                origin.strip()
+                for origin in raw_origins.split(",")
+                if origin.strip()
             ]
 
-        self.CORS_ALLOW_ORIGINS: List[str] = parsed
+            # Disallow wildcard CORS in any non-dev environment
+            if any(o == "*" for o in parsed_origins) and self.ENV != "dev":
+                raise RuntimeError(
+                    "CORS_ALLOW_ORIGINS cannot contain '*' when ENV is not 'dev'. "
+                    "Use explicit origins instead."
+                )
+        else:
+            # Explicit safe defaults for dev/test
+            if self.ENV in ("dev", "test"):
+                parsed_origins = [
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                    "http://localhost:5173",
+                    "http://127.0.0.1:5173",
+                    "http://localhost:19006",
+                    "http://127.0.0.1:19006",
+                ]
+            else:
+                # In prod/other, missing CORS config is an error
+                raise RuntimeError(
+                    "CORS_ALLOW_ORIGINS is not set for this environment. "
+                    "Set it to a comma-separated list of allowed origins."
+                )
 
-        # -----------------------------
-        # Demo seeding
-        # -----------------------------
+        self.CORS_ALLOW_ORIGINS: List[str] = parsed_origins
+
+        # Demo data seeding – OFF by default, must be explicitly enabled
         self.ENABLE_DEMO_SEED: bool = (
-            os.getenv("ENABLE_DEMO_SEED", "true").lower() == "true"
+            os.getenv("ENABLE_DEMO_SEED", "false").lower() == "true"
         )
+
 
         # -----------------------------
         # Cloudinary
