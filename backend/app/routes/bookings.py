@@ -15,6 +15,21 @@ router = APIRouter()
 router = APIRouter(tags=["bookings"])
 
 
+def _require_current_provider(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+) -> models.Provider:
+    if not current_user.is_provider:
+        raise HTTPException(
+            status_code=403, detail="Only providers can access this endpoint",
+        )
+
+    provider = crud.get_provider_by_user_id(db, current_user.id)
+    if not provider:
+        provider = crud.create_provider_for_user(db, current_user)
+    return provider
+
+
 @router.post("/bookings")
 def create_booking_for_me(
     booking_in: schemas.BookingCreate,
@@ -41,9 +56,8 @@ def list_my_bookings(
 @router.get("/providers/me/bookings")
 def list_provider_bookings(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+     provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.list_bookings_for_provider(db, provider.id)
 
 
@@ -51,9 +65,8 @@ def list_provider_bookings(
 def confirm_booking_as_provider(
     booking_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
-):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
+    provider: models.Provider = Depends(_require_current_provider),
+ ):
     ok = crud.confirm_booking_for_provider(
         db, booking_id=booking_id, provider_id=provider.id
     )
@@ -66,9 +79,8 @@ def confirm_booking_as_provider(
 def cancel_booking_as_provider(
     booking_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     ok = crud.cancel_booking_for_provider(
         db, booking_id=booking_id, provider_id=provider.id
     )
@@ -115,17 +127,15 @@ def cancel_my_booking(
 @router.get("/providers/me/bookings/today")
 def list_my_todays_bookings(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.list_todays_bookings_for_provider(db, provider.id)
 
 
 @router.get("/providers/me/bookings/upcoming")
 def list_my_upcoming_bookings(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.list_upcoming_bookings_for_provider(db, provider.id)
 

@@ -23,6 +23,19 @@ cloudinary.config(
 
 router = APIRouter(tags=["providers"])
 
+def _require_current_provider(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+) -> models.Provider:
+    if not current_user.is_provider:
+        raise HTTPException(
+            status_code=403, detail="Only providers can access this endpoint",
+        )
+
+    provider = crud.get_provider_by_user_id(db, current_user.id)
+    if not provider:
+        provider = crud.create_provider_for_user(db, current_user)
+    return provider
 
 # -------------------------------------------------------------------
 # Provider "me" profile
@@ -30,38 +43,25 @@ router = APIRouter(tags=["providers"])
 
 @router.get("/providers/me")
 def get_my_provider(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
     return provider
 
 
-@router.put("/providers/me")
-def update_my_provider(
-    provider_update: schemas.ProviderUpdate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
-):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
-    updated = crud.update_provider(db, provider.id, provider_update)
-    return updated
+
 
 
 @router.post("/providers/me/avatar")
 def upload_my_avatar(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider), 
 ):
     """
     Upload or update the current provider's avatar image.
     Expects multipart/form-data with a file field named 'file'.
     """
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
-
     # Save uploaded file to a temp file so Cloudinary can read it
     suffix = "." + (file.filename.split(".")[-1] if "." in file.filename else "jpg")
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -87,9 +87,8 @@ def upload_my_avatar(
 @router.get("/providers/me/services")
 def list_my_services(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.list_services_for_provider(db, provider.id)
 
 
@@ -97,9 +96,8 @@ def list_my_services(
 def create_my_service(
     service_in: schemas.ServiceCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.create_service_for_provider(db, provider.id, service_in)
 
 
@@ -108,9 +106,8 @@ def update_my_service(
     service_id: int,
     service_update: schemas.ServiceUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.update_service(db, provider.id, service_id, service_update)
 
 
@@ -118,9 +115,8 @@ def update_my_service(
 def delete_my_service(
     service_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     crud.delete_service(db, provider.id, service_id)
     return {"status": "deleted"}
 
@@ -132,13 +128,12 @@ def delete_my_service(
 @router.get("/providers/me/working-hours", response_model=List[schemas.WorkingHoursOut])
 def get_my_working_hours(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
     """
     Return 7 rows (Mon–Sun). If none exist, create defaults (all closed)
     so the frontend always has something to render.
     """
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
     return crud.get_or_create_working_hours_for_provider(db, provider.id)
 
 
@@ -149,13 +144,12 @@ def get_my_working_hours(
 def update_my_working_hours(
     hours: List[schemas.ProviderWorkingHoursUpdate],
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
     """
     Replace this provider's working hours with the given list.
     Each item should have: weekday, is_closed, start_time, end_time.
     """
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
 
     # Convert Pydantic models -> plain dicts for the CRUD helper
     rows = crud.set_working_hours_for_provider(
@@ -169,9 +163,8 @@ def update_my_working_hours(
 @router.get("/providers/me/summary")
 def get_my_provider_summary(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
 
     # You can wire this to real fee logic if desired:
     # fees_due = crud.get_provider_fees_due(db, provider.id)
@@ -234,11 +227,14 @@ def get_provider_availability_route(
     return availability
 
 
+
 @router.put("/providers/me")
+# NOTE: This is the canonical PUT /providers/me route; avoid defining duplicates
+# elsewhere to prevent FastAPI from choosing an unexpected handler.
 def update_my_provider_profile(
     payload: schemas.ProviderUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
     """
     Update provider profile fields (bio, location text, whatsapp, is_active, professions).
@@ -246,7 +242,6 @@ def update_my_provider_profile(
     Coordinate updates (lat/long) are handled exclusively by /providers/me/location
     with proper validation, so they are NOT accepted here.
     """
-    provider = crud.get_or_create_provider_for_user(db, current_user.id)
 
     # Update provider row via CRUD helper
     updated = crud.update_provider(db, provider.id, payload)
@@ -262,6 +257,8 @@ def update_my_provider_profile(
     db.commit()
     db.refresh(updated)
     db.refresh(current_user)
+
+    return updated
 
     return updated
 
