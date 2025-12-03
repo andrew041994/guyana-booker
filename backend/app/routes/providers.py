@@ -41,13 +41,34 @@ def _require_current_provider(
 # Provider "me" profile
 # -------------------------------------------------------------------
 
+def _get_provider_for_user(db: Session, current_user: models.User) -> models.Provider:
+    if not current_user.is_provider:
+        raise HTTPException(
+            status_code=403, detail="Only providers can access this endpoint",
+        )
+
+    provider = crud.get_provider_by_user_id(db, current_user.id)
+    if not provider:
+        provider = crud.create_provider_for_user(db, current_user)
+    return provider
+
+
+def _require_current_provider(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+) -> models.Provider:
+    return _get_provider_for_user(db, current_user)
+
+
+# -------------------------------------------------------------------
+# Provider "me" profile
+# -------------------------------------------------------------------
+
 @router.get("/providers/me")
 def get_my_provider(
-    
     provider: models.Provider = Depends(_require_current_provider),
 ):
     return provider
-
 
 
 
