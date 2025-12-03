@@ -2,8 +2,13 @@ import os
 from functools import lru_cache
 from typing import List
 from dotenv import load_dotenv, find_dotenv
+from pathlib import Path
 
-# Load the nearest .env file (root .env or backend/.env)
+# Load backend/.env explicitly (if present) so local credentials are picked up
+# when running from any working directory. Fall back to the nearest .env for
+# compatibility with existing setups.
+BACKEND_DOTENV = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(BACKEND_DOTENV, override=False)
 load_dotenv(find_dotenv(), override=False)
 
 

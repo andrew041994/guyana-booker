@@ -2,7 +2,10 @@ from dotenv import load_dotenv, find_dotenv
 import os
 from twilio.rest import Client
 
-# Load the same .env the app uses
+# Load backend/.env explicitly to ensure credentials are available when running
+# tests from any working directory, then fall back to the nearest .env.
+BACKEND_DOTENV = Path(__file__).resolve().parent / ".env"
+load_dotenv(BACKEND_DOTENV, override=False)
 load_dotenv(find_dotenv(), override=False)
 
 sid = os.getenv("TWILIO_ACCOUNT_SID")

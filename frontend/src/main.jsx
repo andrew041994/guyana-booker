@@ -73,7 +73,14 @@ function App() {
     <BrowserRouter>
       <nav className="bg-blue-800 text-white p-6">
         <div className="max-w-6xl mx-auto flex justify-between">
-          <Link to="/" className="text-2xl font-bold">Guyana Booker</Link>
+           <Link to="/" className="flex items-center gap-3">
+            <img
+              src="/bookitgy-logo.png"   // or .png / .jpg
+              alt="BookitGY"
+              className="h-9 w-auto"
+            />
+            {/* keep text only for accessibility, not visually */}
+          </Link>
           {token ? <button onClick={() => { localStorage.removeItem('token'); setToken('') }} className="bg-red-600 px-6 py-2 rounded">Logout</button> : <Link to="/login">Login</Link>}
         </div>
       </nav>

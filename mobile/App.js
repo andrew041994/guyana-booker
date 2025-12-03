@@ -10,6 +10,13 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
+import BookitGYLogo from "./assets/bookitgy-logo.png";
+import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native";
+
+
+
 // import { API } from "./App"; // wherever you define your base URL
 
 
@@ -100,20 +107,43 @@ const Tab = createBottomTabNavigator();
 function LandingScreen({ goToLogin, goToSignup }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Guyana Booker</Text>
-      <Text style={styles.subtitle}>Find and book services in Guyana</Text>
-
-      <View style={{ marginTop: 30, width: "100%" }}>
-        <View style={{ marginBottom: 10 }}>
-          <Button title="Login" onPress={goToLogin} color="#16a34a" />
-        </View>
-        <View>
-          <Button title="Sign Up" onPress={goToSignup} color="#166534" />
-        </View>
+     <View style={{ alignItems: "center", marginBottom: 40, marginTop: 60 }}>
+      <Image
+        source={BookitGYLogoTransparent}
+        style={{
+          width: 360,
+          height: 360,
+          resizeMode: "contain",
+          opacity: 0.96,
+        }}
+      />
       </View>
-    </View>
-  );
-}
+        <Text
+          style={styles.subtitle}
+          allowFontScaling={false}
+        >
+          Find and book services in {"\n"}Guyana
+        </Text>
+        
+
+          <View style={{ marginTop: 30, width: "100%" }}>
+            <TouchableOpacity
+              style={styles.authPrimaryButton}
+              onPress={goToLogin}
+            >
+              <Text style={styles.authPrimaryButtonText}>LOGIN</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.authSecondaryButton}
+              onPress={goToSignup}
+            >
+              <Text style={styles.authSecondaryButtonText}>SIGN UP</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
 
 function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
   const [email, setEmail] = useState("customer@guyana.com");
@@ -183,6 +213,16 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
 
   return (
     <View style={styles.container}>
+      <View style={{ alignItems: "center", marginBottom: 40, marginTop: 60 }}>
+        <Image
+          source={BookitGYLogoTransparent}
+          style={{
+            width: 300,          // bigger
+            height: 300,
+            resizeMode: "contain",
+          }}
+        />
+      </View>
       <Text style={styles.title}>Login</Text>
       <TextInput
         style={styles.input}
@@ -972,6 +1012,47 @@ function ProfileScreen({ setToken, showFlash, token }) {
 }
 
 
+
+function ClientHomeScreen({ navigation }) {
+  return (
+    <View style={styles.center}>
+      <View style={{ alignItems: "center", marginBottom: 24 }}>
+        <Image
+          source={BookitGYLogoTransparent}
+          style={{ width: 260, height: 260, resizeMode: "contain" }}
+        />
+      </View>
+        <Text
+          style={styles.subtitle}
+          allowFontScaling={false}
+        >
+          Find and book services in {"\n"}Guyana
+        </Text>
+      <View style={{ marginTop: 30, width: "70%" }}>
+        <TouchableOpacity
+          style={styles.bookButton}
+          onPress={() => navigation.navigate("Search")}
+        >
+          <Text style={styles.bookButtonLabel}>Start searching</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+
+function AppointmentsScreen({ token, showFlash }) {
+  // For now this is a simple placeholder.
+  // Later we can move the "My bookings" logic from Profile into here.
+  return (
+    <View style={styles.center}>
+      <Text style={styles.profileTitle}>Appointments</Text>
+      <Text style={styles.subtitleSmall}>
+        Your upcoming and past bookings will appear here.
+      </Text>
+    </View>
+  );
+}
 
 
 
@@ -3278,21 +3359,54 @@ function MainApp({ token, setToken, showFlash }) {
         </Tab.Navigator>
       ) : (
         // 👇 Client view: Profile + Search
-        <Tab.Navigator initialRouteName="Profile">
-          <Tab.Screen name="Profile">
-            {() => (
-              <ProfileScreen
-                token={token}
-                setToken={setToken}
-                showFlash={showFlash}
-              />
-            )}
-          </Tab.Screen>
+        <Tab.Navigator
+            screenOptions={({ route }) => ({
+              headerShown: false,
+              tabBarShowLabel: true,
+              tabBarActiveTintColor: "#0B6BF2",
+              tabBarInactiveTintColor: "#A1A1A1",
+              tabBarStyle: {
+                backgroundColor: "#FFFFFF",
+                height: 70,
+                paddingBottom: 25,
+                paddingTop: 8,
+                borderTopWidth: 0,
+                shadowColor: "#000",
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+                elevation: 4,
+                marginBottom: Platform.OS === "android" ? 8 : 0, // ⬅️ lifts bar above system buttons
 
-          <Tab.Screen name="Search">
-            {() => <SearchScreen token={token} showFlash={showFlash} />}
-          </Tab.Screen>
-        </Tab.Navigator>
+              },
+
+              tabBarIcon: ({ color, size }) => {
+                let iconName;
+
+                if (route.name === "Home") iconName = "home-outline";
+                else if (route.name === "Search") iconName = "search-outline";
+                else if (route.name === "Appointments") iconName = "calendar-outline";
+                else if (route.name === "Profile") iconName = "person-outline";
+
+                return <Ionicons name={iconName} size={24} color={color} />;
+              },
+            })}
+            initialRouteName="Home"
+          >
+            <Tab.Screen name="Home" component={ClientHomeScreen} />
+            <Tab.Screen name="Search">
+              {() => <SearchScreen token={token} showFlash={showFlash} />}
+            </Tab.Screen>
+            <Tab.Screen name="Appointments">
+              {() => <AppointmentsScreen token={token} showFlash={showFlash} />}
+            </Tab.Screen>
+            <Tab.Screen name="Profile">
+              {() => (
+                <ProfileScreen token={token} setToken={setToken} showFlash={showFlash} />
+              )}
+            </Tab.Screen>
+          </Tab.Navigator>
+
+
       )}
     </NavigationContainer>
   );
@@ -4062,6 +4176,44 @@ providerSummaryValue: {
     fontWeight: "700",
     color: "#166534",
   },
+
+  authPrimaryButton: {
+  backgroundColor: "#16a34a",
+  paddingVertical: 14,
+  borderRadius: 6,
+  alignItems: "center",
+  marginBottom: 12,
+  shadowColor: "#000",
+  shadowOpacity: 0.15,
+  shadowOffset: { width: 0, height: 2 },
+  shadowRadius: 3,
+  elevation: 3,
+},
+
+authPrimaryButtonText: {
+  color: "#FFFFFF",
+  fontSize: 16,
+  fontWeight: "600",
+},
+
+authSecondaryButton: {
+  backgroundColor: "#166534",
+  paddingVertical: 14,
+  borderRadius: 6,
+  alignItems: "center",
+  shadowColor: "#000",
+  shadowOpacity: 0.15,
+  shadowOffset: { width: 0, height: 2 },
+  shadowRadius: 3,
+  elevation: 3,
+},
+
+authSecondaryButtonText: {
+  color: "#FFFFFF",
+  fontSize: 16,
+  fontWeight: "600",
+},
+
 
 
 

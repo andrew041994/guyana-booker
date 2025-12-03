@@ -9,7 +9,6 @@ from app.security import get_current_user_from_header
 
 
 
-router = APIRouter()
 
 
 router = APIRouter(tags=["bookings"])
@@ -37,7 +36,9 @@ def create_booking_for_me(
     current_user: models.User = Depends(get_current_user_from_header),
 ):
     try:
-        booking = crud.create_booking(db, booking_in, customer_id=current_user.id)
+        booking = crud.create_booking(
+            db, customer_id=current_user.id, booking=booking_in
+        )
     except ValueError as e:
         # bad time, slot already taken, etc.
         raise HTTPException(status_code=400, detail=str(e))
