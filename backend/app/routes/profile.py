@@ -1,20 +1,17 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlalchemy.orm import Session
 from typing import Optional, List
 from urllib.parse import urlparse
-from fastapi import HTTPException, status
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app import models, schemas, crud
 from app.config import get_settings
-
 from app.security import get_current_user_from_header
-
 
 settings = get_settings()
 
 router = APIRouter(tags=["profile"])
-
-
 
 MAX_AVATAR_URL_LENGTH = 500
 
@@ -50,14 +47,11 @@ def _sanitize_avatar_url(raw_url: str) -> str:
     return url
 
 
-
-
-
 # =====================================================================
 #  PROVIDER PROFILE
 # =====================================================================
 
-# GET /providers/me/profile
+
 @router.get(
     "/providers/me/profile",
     response_model=schemas.ProviderProfileOut,
@@ -67,13 +61,25 @@ def read_my_provider_profile(
     user: models.User = Depends(get_current_user_from_header),
     db: Session = Depends(get_db),
 ):
+    """
+    Return the current provider's profile.
+
+    Only users with is_provider=True and an existing provider row
+    are allowed to access this.
+    """
     if not user.is_provider:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only providers can view provider profile",
         )
 
-    provider = crud.get_or_create_provider_for_user(db, user.id)
+    provider = crud.get_provider_for_user(db, user.id)
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have a provider profile. Contact support or an admin.",
+        )
+
     professions = crud.get_professions_for_provider(db, provider.id)
 
     return schemas.ProviderProfileOut(
@@ -83,11 +89,10 @@ def read_my_provider_profile(
         location=user.location or "",
         bio=provider.bio or "",
         professions=professions,
-        avatar_url=provider.avatar_url,  # 👈 NEW
+        avatar_url=provider.avatar_url,
     )
 
 
-# PUT /providers/me/profile
 @router.put(
     "/providers/me/profile",
     response_model=schemas.ProviderProfileOut,
@@ -98,13 +103,21 @@ def update_my_provider_profile(
     user: models.User = Depends(get_current_user_from_header),
     db: Session = Depends(get_db),
 ):
+    """
+    Update the current provider's profile (user + provider fields).
+    """
     if not user.is_provider:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only providers can edit provider profile",
         )
 
-    provider = crud.get_or_create_provider_for_user(db, user.id)
+    provider = crud.get_provider_for_user(db, user.id)
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have a provider profile. Contact support or an admin.",
+        )
 
     # Update basic user fields
     if payload.full_name is not None:
@@ -123,10 +136,9 @@ def update_my_provider_profile(
     if payload.bio is not None:
         provider.bio = payload.bio
 
+    # Update avatar URL (sanitized)
     if payload.avatar_url is not None:
         provider.avatar_url = _sanitize_avatar_url(payload.avatar_url)
-
-
 
     # Update professions if provided
     if payload.professions is not None:
@@ -147,7 +159,7 @@ def update_my_provider_profile(
         location=user.location or "",
         bio=provider.bio or "",
         professions=professions,
-        avatar_url=provider.avatar_url,  # 👈 NEW
+        avatar_url=provider.avatar_url,
     )
 
 
@@ -155,7 +167,7 @@ def update_my_provider_profile(
 #  WORKING HOURS
 # =====================================================================
 
-# POST /providers/me/hours
+
 @router.post(
     "/providers/me/hours",
     response_model=List[schemas.WorkingHoursOut],
@@ -175,7 +187,8 @@ def update_my_working_hours(
     provider = crud.get_provider_by_user_id(db, user.id)
     if not provider:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider not found",
         )
 
     hours_list = [h.dict() for h in hours]
@@ -190,25 +203,44 @@ def update_my_working_hours(
 #  GENERIC USER PROFILE
 # =====================================================================
 
-# GET /me/profile  (optional: for future use on client side)
 @router.get(
-    "/me/profile",
-    response_model=schemas.UserProfileOut,
+    "/providers/me/profile",
+    response_model=schemas.ProviderProfileOut,
     status_code=status.HTTP_200_OK,
 )
-def read_my_profile(
+def read_my_provider_profile(
     user: models.User = Depends(get_current_user_from_header),
     db: Session = Depends(get_db),
 ):
-    return schemas.UserProfileOut(
+    if not user.is_provider:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only providers can view provider profile",
+        )
+
+    # Use `user`, not undefined `current_user`
+    provider = crud.get_provider_for_user(db, user.id)
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have a provider profile. Contact support or an admin.",
+        )
+
+    professions = crud.get_professions_for_provider(db, provider.id)
+
+    return schemas.ProviderProfileOut(
         full_name=user.full_name or "",
         phone=user.phone or "",
         whatsapp=user.whatsapp,
         location=user.location or "",
+        bio=provider.bio or "",
+        professions=professions,
+        avatar_url=provider.avatar_url,
     )
 
 
-# PUT /me/profile
+
+
 @router.put(
     "/me/profile",
     response_model=schemas.UserProfileOut,

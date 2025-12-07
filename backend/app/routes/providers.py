@@ -1,16 +1,17 @@
 from typing import List, Optional
-import tempfile
 import os
+
 import cloudinary
 import cloudinary.uploader
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
+from tempfile import NamedTemporaryFile
+
 from app.services.cloudinary_service import upload_avatar
 from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
 from app.config import get_settings
-
 
 settings = get_settings()
 
@@ -23,33 +24,59 @@ cloudinary.config(
 
 router = APIRouter(tags=["providers"])
 
-def _require_current_provider(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_from_header),
-) -> models.Provider:
-    if not current_user.is_provider:
-        raise HTTPException(
-            status_code=403, detail="Only providers can access this endpoint",
-        )
+# -------------------------------------------------------------------
+# Avatar upload validation
+# -------------------------------------------------------------------
 
-    provider = crud.get_provider_by_user_id(db, current_user.id)
-    if not provider:
-        provider = crud.create_provider_for_user(db, current_user)
-    return provider
+ALLOWED_AVATAR_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
+
+MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def _scan_bytes_for_viruses(data: bytes) -> None:
+    """
+    Hook for virus scanning.
+
+    In production, integrate with ClamAV or a third-party AV API.
+    For now it's a no-op stub to make the security intent explicit.
+    """
+    # Example:
+    # result = antivirus_client.scan_bytes(data)
+    # if not result.clean:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail="Malicious file detected",
+    #     )
+    return
+
 
 # -------------------------------------------------------------------
-# Provider "me" profile
+# Provider helper (no auto-creation)
 # -------------------------------------------------------------------
 
 def _get_provider_for_user(db: Session, current_user: models.User) -> models.Provider:
+    """
+    Return the Provider row for the current user.
+
+    - Requires is_provider=True
+    - Does NOT auto-create; missing provider -> 403/404
+    """
     if not current_user.is_provider:
         raise HTTPException(
-            status_code=403, detail="Only providers can access this endpoint",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only providers can access this endpoint",
         )
 
     provider = crud.get_provider_by_user_id(db, current_user.id)
     if not provider:
-        provider = crud.create_provider_for_user(db, current_user)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have a provider profile. Contact support or an admin.",
+        )
     return provider
 
 
@@ -58,6 +85,79 @@ def _require_current_provider(
     current_user: models.User = Depends(get_current_user_from_header),
 ) -> models.Provider:
     return _get_provider_for_user(db, current_user)
+
+
+# -------------------------------------------------------------------
+# Provider "me" avatar
+# -------------------------------------------------------------------
+
+@router.post("/providers/me/avatar")
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    provider = _get_provider_for_user(db, current_user)
+
+    # Validate MIME type
+    if file.content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid avatar file type. Allowed: JPEG, PNG, WEBP.",
+        )
+
+    # Read and enforce size
+    contents = await file.read()
+    if len(contents) > MAX_AVATAR_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar file is too large. Maximum size is 5 MB.",
+        )
+
+    # Optional malware scan
+    _scan_bytes_for_viruses(contents)
+
+    # Write to a temporary file for Cloudinary
+    try:
+        with NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to buffer uploaded file",
+        )
+
+    # Upload using your Cloudinary helper
+    try:
+        upload_result = upload_avatar(tmp_path)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload avatar",
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+    if isinstance(upload_result, dict):
+        secure_url = upload_result.get("secure_url")
+    else:
+        secure_url = str(upload_result)
+
+    if not secure_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Avatar upload did not return a valid URL",
+        )
+
+    provider.avatar_url = secure_url
+    db.commit()
+    db.refresh(provider)
+
+    return {"avatar_url": secure_url}
 
 
 # -------------------------------------------------------------------
@@ -70,36 +170,6 @@ def get_my_provider(
 ):
     return provider
 
-
-
-
-@router.post("/providers/me/avatar")
-def upload_my_avatar(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    provider: models.Provider = Depends(_require_current_provider), 
-):
-    """
-    Upload or update the current provider's avatar image.
-    Expects multipart/form-data with a file field named 'file'.
-    """
-    # Save uploaded file to a temp file so Cloudinary can read it
-    suffix = "." + (file.filename.split(".")[-1] if "." in file.filename else "jpg")
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(file.file.read())
-        tmp_path = tmp.name
-
-    try:
-        public_id = f"provider_{provider.id}_avatar"
-        avatar_url = upload_avatar(tmp_path, public_id=public_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Avatar upload failed: {e}")
-
-    provider.avatar_url = avatar_url
-    db.commit()
-    db.refresh(provider)
-
-    return {"avatar_url": provider.avatar_url}
 
 # -------------------------------------------------------------------
 # Provider "me" services
@@ -171,8 +241,6 @@ def update_my_working_hours(
     Replace this provider's working hours with the given list.
     Each item should have: weekday, is_closed, start_time, end_time.
     """
-
-    # Convert Pydantic models -> plain dicts for the CRUD helper
     rows = crud.set_working_hours_for_provider(
         db=db,
         provider_id=provider.id,
@@ -186,15 +254,14 @@ def get_my_provider_summary(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-
-    # You can wire this to real fee logic if desired:
-    # fees_due = crud.get_provider_fees_due(db, provider.id)
+    # Placeholder for fee logic
     total_fees_due = 0
 
     return {
         "account_number": provider.account_number,
         "total_fees_due_gyd": float(total_fees_due or 0.0),
     }
+
 
 # -------------------------------------------------------------------
 # Provider "me" location pin
@@ -213,21 +280,18 @@ def update_my_location(
     - Only works for users marked as providers.
     - Stores coordinates on the User record (lat, long, location).
     """
-
     if not current_user.is_provider:
         raise HTTPException(
             status_code=403,
             detail="Only providers can pin their location.",
         )
 
-    # Basic validation in case the frontend sends weird values
     if payload.lat is None or payload.long is None:
         raise HTTPException(
             status_code=400,
             detail="Latitude and longitude are required.",
         )
 
-    # Update the user's location fields
     current_user.lat = payload.lat
     current_user.long = payload.long
 
@@ -268,6 +332,7 @@ def get_provider(provider_id: int, db: Session = Depends(get_db)):
 def list_provider_services(provider_id: int, db: Session = Depends(get_db)):
     return crud.list_services_for_provider(db, provider_id)
 
+
 @router.get(
     "/providers/{provider_id}/availability",
     response_model=List[schemas.ProviderAvailabilityDay],
@@ -295,23 +360,18 @@ def get_provider_availability_route(
     return availability
 
 
-
 @router.put("/providers/me")
-# NOTE: This is the canonical PUT /providers/me route; avoid defining duplicates
-# elsewhere to prevent FastAPI from choosing an unexpected handler.
 def update_my_provider_profile(
     payload: schemas.ProviderUpdate,
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
+    current_user: models.User = Depends(get_current_user_from_header),
 ):
     """
     Update provider profile fields (bio, location text, whatsapp, is_active, professions).
 
-    Coordinate updates (lat/long) are handled exclusively by /providers/me/location
-    with proper validation, so they are NOT accepted here.
+    Coordinate updates (lat/long) are handled exclusively by /providers/me/location.
     """
-
-    # Update provider row via CRUD helper
     updated = crud.update_provider(db, provider.id, payload)
     if not updated:
         raise HTTPException(status_code=404, detail="Provider not found")
@@ -327,6 +387,3 @@ def update_my_provider_profile(
     db.refresh(current_user)
 
     return updated
-
-
-

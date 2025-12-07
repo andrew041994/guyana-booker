@@ -93,6 +93,14 @@ def create_provider_for_user(db: Session, user: models.User):
     db.refresh(provider)
     return provider
 
+def get_provider_for_user(db: Session, user_id: int):
+    """
+    Backwards-compatible alias for fetching a provider by user_id.
+    Used by the profile routes (e.g. /providers/me/profile).
+    """
+    return get_provider_by_user_id(db, user_id)
+
+
 def list_providers(db: Session, profession: Optional[str] = None):
     """
     Public list of providers for the client search screen.
