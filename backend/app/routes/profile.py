@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from app.database import get_db
 from app import models, schemas, crud
 from app.config import get_settings
+
 from app.security import get_current_user_from_header
 
 
@@ -15,17 +16,16 @@ router = APIRouter(tags=["profile"])
 
 
 
-
 MAX_AVATAR_URL_LENGTH = 500
+
 
 def _sanitize_avatar_url(raw_url: str) -> str:
     """
     Validate and normalize an avatar URL before saving it.
 
-    Requirements:
-    - Must be a non-empty http or https URL
-    - Rejects scriptable schemes (javascript:, data:, file:, etc.)
-    - Enforces length limit
+    - Rejects empty/whitespace-only values.
+    - Requires http:// or https:// scheme.
+    - Enforces a max length to avoid abuse payloads.
     """
     if raw_url is None:
         return None
@@ -37,17 +37,18 @@ def _sanitize_avatar_url(raw_url: str) -> str:
     if len(url) > MAX_AVATAR_URL_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Avatar URL is too long"
+            detail="Avatar URL is too long",
         )
 
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Avatar URL must start with http:// or https://"
+            detail="Avatar URL must start with http:// or https://",
         )
 
     return url
+
 
 
 
@@ -123,7 +124,8 @@ def update_my_provider_profile(
         provider.bio = payload.bio
 
     if payload.avatar_url is not None:
-         provider.avatar_url = _sanitize_avatar_url(payload.avatar_url)
+        provider.avatar_url = _sanitize_avatar_url(payload.avatar_url)
+
 
 
     # Update professions if provided

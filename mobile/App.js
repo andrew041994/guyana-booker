@@ -98,7 +98,7 @@ async function registerForPushNotificationsAsync() {
   }
 }
 
-
+  
 
 
 const Tab = createBottomTabNavigator();

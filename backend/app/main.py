@@ -1,4 +1,6 @@
 import os
+import secrets
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -14,7 +16,6 @@ from app.routes import bookings as bookings_routes
 from app.routes import profile as profile_routes
 from app.security import get_current_user_from_header
 from app.workers.cron import registerCronJobs
-import secrets
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app import crud, schemas
@@ -32,14 +33,16 @@ scheduler = BackgroundScheduler()
 def _seed_demo_users() -> None:
     """
     Seed demo users in development environment only.
-    This will:
-    - Run only when ENV='dev' AND ENABLE_DEMO_SEED=true
-    - Use a strong random password unless DEMO_USER_PASSWORD is set
+
+    Guarded by:
+      - ENV == 'dev'
+      - ENABLE_DEMO_SEED=true
+
+    Uses a strong random password unless DEMO_USER_PASSWORD is set.
     """
     if not settings.ENABLE_DEMO_SEED or settings.ENV != "dev":
         return
 
-    # Determine password
     demo_password = os.getenv("DEMO_USER_PASSWORD")
     if not demo_password or len(demo_password) < 12:
         demo_password = secrets.token_urlsafe(16)
@@ -50,7 +53,7 @@ def _seed_demo_users() -> None:
 
     db: Session = SessionLocal()
     try:
-        # CUSTOMER
+        # CUSTOMER (non-provider)
         customer = crud.get_user_by_email(db, "customer@guyana.com")
         if not customer:
             customer = crud.create_user(
@@ -58,8 +61,8 @@ def _seed_demo_users() -> None:
                 schemas.UserCreate(
                     email="customer@guyana.com",
                     password=demo_password,
-                    full_name="Demo Customer"
-                )
+                    full_name="Demo Customer",
+                ),
             )
 
         # PROVIDER
@@ -70,17 +73,16 @@ def _seed_demo_users() -> None:
                 schemas.UserCreate(
                     email="provider@guyana.com",
                     password=demo_password,
-                    full_name="Demo Provider"
-                )
+                    full_name="Demo Provider",
+                ),
             )
 
-        # Ensure provider role (server-side only)
-        if not provider_user.is_provider:
+        # Ensure provider role is set server-side only
+        if not getattr(provider_user, "is_provider", False):
             provider_user.is_provider = True
             db.commit()
             db.refresh(provider_user)
 
-        # Create provider profile if missing
         crud.get_or_create_provider_for_user(db, provider_user.id)
 
         print(
@@ -88,7 +90,6 @@ def _seed_demo_users() -> None:
             "customer@guyana.com and provider@guyana.com "
             f"with shared password: {demo_password!r}"
         )
-
     finally:
         db.close()
 
@@ -127,37 +128,7 @@ def start_scheduler() -> None:
 # -------------------------------------------------------------------
 # Demo data seeding
 # -------------------------------------------------------------------
-def _seed_demo_users() -> None:
-    """Seed demo users in development environment only."""
-    if not settings.ENABLE_DEMO_SEED or settings.ENV != "dev":
-        return
 
-    db: Session = SessionLocal()
-    try:
-        # Customer
-        if not crud.get_user_by_email(db, "customer@guyana.com"):
-            crud.create_user(
-                db,
-                schemas.UserCreate(
-                    email="customer@guyana.com",
-                    password="pass",
-                    full_name="Demo Customer",
-                ),
-            )
-
-        # Provider
-        if not crud.get_user_by_email(db, "provider@guyana.com"):
-            user = crud.create_user(
-                db,
-                schemas.UserCreate(
-                    email="provider@guyana.com",
-                    password="pass",
-                    full_name="Demo Provider",
-                ),
-            )
-            crud.get_or_create_provider_for_user(db, user.id)
-    finally:
-        db.close()
 
 
 # -------------------------------------------------------------------

@@ -29,15 +29,31 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 def _create_access_token(subject: str) -> str:
-    expire = datetime.utcnow() + timedelta(
+    """
+    Create a signed JWT access token for a given subject (user email).
+
+    Adds:
+    - exp: expiration time
+    - iat: issued-at timestamp (seconds since epoch)
+    """
+    now = datetime.utcnow()
+    expire = now + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
-    payload = {"sub": subject, "exp": expire}
+
+    payload = {
+        "sub": subject,
+        "exp": expire,               # jose can handle datetime
+        "iat": int(now.timestamp()), # numeric timestamp for freshness checks
+    }
+
     return jwt.encode(
         payload,
         settings.JWT_SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
+
+
 
 
 @router.post("/auth/login")

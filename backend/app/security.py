@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, status
@@ -16,10 +17,12 @@ def get_current_user_from_header(
     db: Session = Depends(get_db),
 ) -> models.User:
     """
-    Extract the current user from a standard Bearer token Authorization header.
+    Resolve the current user from a Bearer JWT in the Authorization header.
 
-    - Requires "Authorization: Bearer <token>"
-    - Rejects headers that don't match that pattern (e.g. 'BearerX')
+    - Validates the header format.
+    - Decodes and verifies the JWT.
+    - Looks up the user by email (sub).
+    - Optionally enforces token freshness using 'iat' and a max age.
     """
     if not authorization:
         raise HTTPException(
@@ -31,15 +34,10 @@ def get_current_user_from_header(
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header must be: Bearer <token>",
+            detail="Invalid Authorization header format",
         )
 
-    token = parts[1].strip()
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token in Authorization header",
-        )
+    token = parts[1]
 
     try:
         payload = jwt.decode(
@@ -50,10 +48,10 @@ def get_current_user_from_header(
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail="Invalid or expired token",
         )
 
-    user_email = payload.get("sub")
+    user_email: Optional[str] = payload.get("sub")
     if not user_email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,5 +64,26 @@ def get_current_user_from_header(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    # ------------------------------------------------------------------
+    # Token freshness check using iat
+    # ------------------------------------------------------------------
+    issued_at_ts = payload.get("iat")
+    if isinstance(issued_at_ts, (int, float)):
+        issued_at = datetime.utcfromtimestamp(issued_at_ts)
+
+        # You can override MAX_TOKEN_AGE_MINUTES in env; if not present,
+        # fall back to the same value as ACCESS_TOKEN_EXPIRE_MINUTES.
+        max_age_minutes = getattr(
+            settings,
+            "MAX_TOKEN_AGE_MINUTES",
+            settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        )
+
+        if (datetime.utcnow() - issued_at) > timedelta(minutes=max_age_minutes):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is too old, please log in again",
+            )
 
     return user
