@@ -242,4 +242,12 @@ class ProviderLocationUpdate(BaseModel):
     long: float
     location: Optional[str] = None  # optional human-readable text
 
+class ProviderCatalogImageOut(BaseModel):
+    id: int
+    image_url: str
+    caption: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 

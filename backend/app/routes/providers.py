@@ -3,7 +3,7 @@ import os
 from io import BytesIO
 import cloudinary
 import cloudinary.uploader
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Form
 from sqlalchemy.orm import Session
 from tempfile import NamedTemporaryFile
 
@@ -370,6 +370,101 @@ def update_my_location(
 
 
 # -------------------------------------------------------------------
+# Provider "me" catalog (portfolio images)
+# -------------------------------------------------------------------
+
+@router.get(
+    "/providers/me/catalog",
+    response_model=List[schemas.ProviderCatalogImageOut],
+)
+def list_my_catalog_images(
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    return crud.list_catalog_images_for_provider(db, provider.id)
+
+
+@router.post(
+    "/providers/me/catalog",
+    response_model=schemas.ProviderCatalogImageOut,
+)
+async def upload_my_catalog_image(
+    file: UploadFile = File(...),
+    caption: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    # Validate MIME type
+    if file.content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image type. Allowed: JPEG, PNG, WEBP.",
+        )
+
+    contents = await file.read()
+    if len(contents) > MAX_AVATAR_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image file is too large. Maximum size is 5 MB.",
+        )
+
+    _validate_image_contents(contents)
+    _scan_bytes_for_viruses(contents)
+
+    # Write to temp file for Cloudinary
+    try:
+        with NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to buffer uploaded file",
+        )
+
+    try:
+        # You can tweak folder/name options here if you want
+        upload_result = cloudinary.uploader.upload(tmp_path, folder="bookitgy/catalog")
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload image",
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+    image_url = upload_result.get("secure_url") if isinstance(upload_result, dict) else str(upload_result)
+    if not image_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Image upload did not return a valid URL",
+        )
+
+    item = crud.add_catalog_image_for_provider(
+        db,
+        provider_id=provider.id,
+        image_url=image_url,
+        caption=caption,
+    )
+    return item
+
+
+@router.delete("/providers/me/catalog/{image_id}")
+def delete_my_catalog_image(
+    image_id: int,
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    ok = crud.delete_catalog_image_for_provider(db, provider.id, image_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Catalog image not found")
+    return {"status": "deleted"}
+
+
+# -------------------------------------------------------------------
 # Public provider routes
 # -------------------------------------------------------------------
 
@@ -392,6 +487,13 @@ def get_provider(provider_id: int, db: Session = Depends(get_db)):
 @router.get("/providers/{provider_id}/services")
 def list_provider_services(provider_id: int, db: Session = Depends(get_db)):
     return crud.list_services_for_provider(db, provider_id)
+
+@router.get(
+    "/providers/{provider_id}/catalog",
+    response_model=List[schemas.ProviderCatalogImageOut],
+)
+def list_provider_catalog(provider_id: int, db: Session = Depends(get_db)):
+    return crud.list_catalog_images_for_provider(db, provider_id)
 
 
 @router.get(

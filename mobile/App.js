@@ -1456,6 +1456,9 @@ function SearchScreen({ token, showFlash, navigation, route }) {
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesError, setServicesError] = useState("");
   const [selectedService, setSelectedService] = useState(null);
+  const [catalogImages, setCatalogImages] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
   const [availability, setAvailability] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
@@ -1687,6 +1690,28 @@ function SearchScreen({ token, showFlash, navigation, route }) {
     }
   };
 
+  const loadProviderCatalog = async (providerId) => {
+    try {
+      setCatalogLoading(true);
+      setCatalogError("");
+
+      const res = await axios.get(`${API}/providers/${providerId}/catalog`);
+
+      setCatalogImages(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.log(
+        "Error loading provider catalog",
+        err.response?.data || err.message
+      );
+      setCatalogError(
+        err.response?.data?.detail || "Could not load provider photos."
+      );
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+
   const handleSelectProvider = async (provider) => {
     setSelectedProvider(provider);
 
@@ -1705,6 +1730,11 @@ function SearchScreen({ token, showFlash, navigation, route }) {
     setAvailabilityError("");
     setSelectedDate(null);
     setSelectedSlot(null);
+
+    // Reset and load catalog for this provider
+    setCatalogImages([]);
+    setCatalogError("");
+    loadProviderCatalog(providerId);
 
     try {
       setServicesLoading(true);
@@ -2002,12 +2032,50 @@ function SearchScreen({ token, showFlash, navigation, route }) {
                       </View>
 
 
-                {/* Services list for selected provider */}
-                {selectedProvider && (
-                  <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>
-                      Services by {selectedProvider.name}
-                    </Text>
+                        {/* Services list for selected provider */}
+                      {selectedProvider && (
+                        <View style={styles.card}>
+                          <Text style={styles.sectionTitle}>
+                            Services by {selectedProvider.name}
+                          </Text>
+
+                          {/* Catalog preview */}
+                          {catalogLoading && (
+                            <View style={{ paddingVertical: 8 }}>
+                              <ActivityIndicator />
+                              <Text style={styles.serviceMeta}>Loading photos…</Text>
+                            </View>
+                          )}
+
+                          {!catalogLoading && catalogError ? (
+                            <Text style={styles.errorText}>{catalogError}</Text>
+                          ) : null}
+
+                          {!catalogLoading &&
+                            !catalogError &&
+                            catalogImages.length > 0 && (
+                              <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.searchCatalogStrip}
+                              >
+                                {catalogImages.map((img) => (
+                                  <Image
+                                    key={img.id}
+                                    source={{ uri: img.image_url }}
+                                    style={styles.searchCatalogImage}
+                                  />
+                                ))}
+                              </ScrollView>
+                            )}
+
+                          {servicesLoading && (
+                            <View style={{ paddingVertical: 10 }}>
+                              <ActivityIndicator />
+                              <Text style={styles.serviceMeta}>Loading services…</Text>
+                            </View>
+                          )}
+
 
                     {servicesLoading && (
                       <View style={{ paddingVertical: 10 }}>
@@ -2248,6 +2316,11 @@ const [upcomingError, setUpcomingError] = useState("");
 const [providerLocation, setProviderLocation] = useState(null);
 const [focusedHoursField, setFocusedHoursField] = useState(null);
 const [avatarUrl, setAvatarUrl] = useState(null);
+// Catalog (portfolio images)
+const [catalog, setCatalog] = useState([]);
+const [catalogLoading, setCatalogLoading] = useState(false);
+const [catalogError, setCatalogError] = useState("");
+const [catalogUploading, setCatalogUploading] = useState(false);
 
 
 
@@ -2266,6 +2339,7 @@ const [avatarUrl, setAvatarUrl] = useState(null);
     loadProviderLocation(); 
     loadProviderSummary();
     loadProviderProfile();
+    loadCatalog();
 
 
 
@@ -2768,7 +2842,7 @@ const to24Hour = (time12) => {
     }).length;
   };
 
-  const loadProviderProfile = async () => {
+const loadProviderProfile = async () => {
   try {
     setProfileLoading(true);
     setProfileError("");
@@ -2804,6 +2878,160 @@ const to24Hour = (time12) => {
     setProfileLoading(false);
   }
 };
+
+const loadCatalog = async () => {
+  try {
+    setCatalogLoading(true);
+    setCatalogError("");
+
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      setCatalogError("No access token found. Please log in again.");
+      return;
+    }
+
+    const res = await axios.get(`${API}/providers/me/catalog`, {
+      headers: { Authorization: `Bearer ${storedToken}` },
+    });
+
+    setCatalog(Array.isArray(res.data) ? res.data : []);
+  } catch (err) {
+    console.log(
+      "Error loading provider catalog",
+      err.response?.data || err.message
+    );
+    const detail =
+      err.response?.data?.detail ||
+      "Could not load your catalog images.";
+    setCatalogError(detail);
+    if (showFlash) showFlash("error", detail);
+  } finally {
+    setCatalogLoading(false);
+  }
+};
+
+
+const uploadCatalogImage = async (uri) => {
+  try {
+    setCatalogUploading(true);
+
+    const tokenStr = await AsyncStorage.getItem("accessToken");
+    if (!tokenStr) {
+      alert("No access token found. Please log in again.");
+      return;
+    }
+
+    const filename = uri.split("/").pop() || "catalog.jpg";
+    const match = /\.(\w+)$/.exec(filename);
+    const ext = match ? match[1].toLowerCase() : "jpg";
+
+    let mimeType = "image/jpeg";
+    if (ext === "png") mimeType = "image/png";
+    else if (ext === "webp") mimeType = "image/webp";
+
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      name: filename,
+      type: mimeType,
+    });
+
+    const res = await axios.post(`${API}/providers/me/catalog`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+        Authorization: `Bearer ${tokenStr}`,
+      },
+    });
+
+    const created = res.data;
+    setCatalog((prev) => [created, ...(prev || [])]);
+
+    if (showFlash) showFlash("success", "Photo added to your catalog");
+  } catch (err) {
+    console.log(
+      "Error uploading catalog image",
+      err.response?.data || err.message
+    );
+    const detail =
+      err.response?.data?.detail ||
+      "Could not upload image. Please try again.";
+    if (showFlash) showFlash("error", detail);
+  } finally {
+    setCatalogUploading(false);
+  }
+};
+
+
+const pickCatalogImage = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 5], // portrait-ish
+      quality: 1,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const asset = result.assets && result.assets[0];
+    if (!asset || !asset.uri) {
+      return;
+    }
+
+    await uploadCatalogImage(asset.uri);
+  } catch (err) {
+    console.log("Error picking catalog image", err);
+    alert("Could not open your gallery. Please try again.");
+  }
+};
+
+
+const handleDeleteCatalogImage = (imageId) => {
+  Alert.alert(
+    "Remove photo",
+    "Do you want to remove this photo from your catalog?",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const tokenStr = await AsyncStorage.getItem("accessToken");
+            if (!tokenStr) {
+              alert("No access token found. Please log in again.");
+              return;
+            }
+
+            await axios.delete(`${API}/providers/me/catalog/${imageId}`, {
+              headers: { Authorization: `Bearer ${tokenStr}` },
+            });
+
+            setCatalog((prev) =>
+              (prev || []).filter((img) => img.id !== imageId)
+            );
+
+            if (showFlash) {
+              showFlash("success", "Photo removed from your catalog");
+            }
+          } catch (err) {
+            console.log(
+              "Error deleting catalog image",
+              err.response?.data || err.message
+            );
+            const detail =
+              err.response?.data?.detail ||
+              "Could not remove photo. Please try again.";
+            if (showFlash) showFlash("error", detail);
+          }
+        },
+      },
+    ]
+  );
+};
+
 
 const saveProviderProfile = async () => {
   try {
@@ -2862,6 +3090,25 @@ const saveProviderProfile = async () => {
   }
 };
 
+const pickAvatar = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets && result.assets[0];
+    if (!asset || !asset.uri) return;
+
+    await uploadAvatar(asset.uri);
+  } catch (err) {
+    console.log("Error picking avatar", err);
+  }
+};
 
 
 const uploadAvatar = async (uri) => {
@@ -3687,6 +3934,75 @@ const loadProviderSummary = async () => {
             )}
           </View>
         )}
+
+        {/* Catalog (portfolio) */}
+        <View style={styles.card}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <Text style={styles.sectionTitle}>Catalog</Text>
+            <TouchableOpacity
+              onPress={pickCatalogImage}
+              disabled={catalogUploading}
+            >
+              <Text
+                style={{
+                  color: "#16a34a",
+                  fontWeight: "600",
+                  opacity: catalogUploading ? 0.6 : 1,
+                }}
+              >
+                {catalogUploading ? "Uploading…" : "+ Add photo"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.hoursHelp}>
+            Add photos of your work. Clients will see these on your public
+            profile.
+          </Text>
+
+          {catalogLoading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading catalog…</Text>
+            </View>
+          )}
+
+          {catalogError ? (
+            <Text style={styles.errorText}>{catalogError}</Text>
+          ) : null}
+
+          {!catalogLoading && !catalogError && catalog.length === 0 && (
+            <Text style={styles.serviceMeta}>
+              No photos yet. Tap “Add photo” to upload your first one.
+            </Text>
+          )}
+
+          <View style={styles.catalogGrid}>
+            {catalog.map((item) => (
+              <View key={item.id} style={styles.catalogItem}>
+                <Image
+                  source={{ uri: item.image_url }}
+                  style={styles.catalogImage}
+                />
+                {item.caption ? (
+                  <Text style={styles.catalogCaption}>{item.caption}</Text>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => handleDeleteCatalogImage(item.id)}
+                >
+                  <Text style={styles.catalogDeleteText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </View>
 
         {/* Actions */}
         <View style={styles.actionsContainer}>
@@ -4855,6 +5171,47 @@ authSecondaryButtonText: {
     marginBottom: 12,
     backgroundColor: "#ffffff",
   },
+
+    catalogGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
+  catalogItem: {
+    width: "30%",
+    marginRight: 8,
+    marginBottom: 12,
+  },
+  catalogImage: {
+    width: "100%",
+    aspectRatio: 3 / 4,
+    borderRadius: 8,
+    backgroundColor: "#E5E7EB",
+  },
+  catalogCaption: {
+    fontSize: 11,
+    color: "#4B5563",
+    marginTop: 4,
+  },
+  catalogDeleteText: {
+    fontSize: 11,
+    color: "#DC2626",
+    marginTop: 2,
+  },
+
+    searchCatalogStrip: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  searchCatalogImage: {
+    width: 140,
+    height: 180,
+    borderRadius: 8,
+    marginRight: 8,
+    backgroundColor: "#e5e7eb",
+  },
+
+
 
 
 })

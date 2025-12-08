@@ -114,3 +114,12 @@ class ProviderProfession(Base):
     id = Column(Integer, primary_key=True, index=True)
     provider_id = Column(Integer, ForeignKey("providers.id"))
     name = Column(String, index=True)
+
+class ProviderCatalogImage(Base):
+    __tablename__ = "provider_catalog_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), index=True, nullable=False)
+    image_url = Column(String, nullable=False)
+    caption = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

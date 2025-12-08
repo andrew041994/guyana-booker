@@ -961,6 +961,52 @@ def set_professions_for_provider(
     )
     return [r.name for r in rows]
 
+def list_catalog_images_for_provider(db: Session, provider_id: int):
+    return (
+        db.query(models.ProviderCatalogImage)
+        .filter(models.ProviderCatalogImage.provider_id == provider_id)
+        .order_by(models.ProviderCatalogImage.created_at.desc())
+        .all()
+    )
+
+
+def add_catalog_image_for_provider(
+    db: Session,
+    provider_id: int,
+    image_url: str,
+    caption: Optional[str] = None,
+):
+    item = models.ProviderCatalogImage(
+        provider_id=provider_id,
+        image_url=image_url,
+        caption=caption or None,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def delete_catalog_image_for_provider(
+    db: Session,
+    provider_id: int,
+    image_id: int,
+) -> bool:
+    item = (
+        db.query(models.ProviderCatalogImage)
+        .filter(
+            models.ProviderCatalogImage.id == image_id,
+            models.ProviderCatalogImage.provider_id == provider_id,
+        )
+        .first()
+    )
+    if not item:
+        return False
+
+    db.delete(item)
+    db.commit()
+    return True
+
 
 def get_provider_availability(
     db: Session,
