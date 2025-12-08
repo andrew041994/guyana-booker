@@ -1163,14 +1163,22 @@ function ClientHomeScreen({ navigation }) {
           Find and book services in {"\n"}Guyana
         </Text>
 
-        <View style={{ marginTop: 30, width: "70%" }}>
-          <TouchableOpacity
-            style={styles.bookButton}
-            onPress={() => navigation.navigate("Search")}
+        <View
+            style={{
+              marginTop: 10,        // was 30 — now moved up
+              width: "70%",
+              alignSelf: "center",  // ensures it's centered
+              marginBottom: 20, 
+            }}
           >
-            <Text style={styles.bookButtonLabel}>Start searching</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.bookButton, { paddingVertical: 14 }]}
+              onPress={() => navigation.navigate("Search")}
+            >
+              <Text style={styles.bookButtonLabel}>Start searching</Text>
+            </TouchableOpacity>
+          </View>
+
 
         <View style={[styles.card, styles.homeCard]}>
           <View style={styles.carouselHeader}>
@@ -1227,24 +1235,50 @@ function ClientHomeScreen({ navigation }) {
                     activeOpacity={0.9}
                     onPress={() => handleProviderPress(provider)}
                   >
-                    <View style={styles.cardImageWrapper}>
-                      {avatar ? (
-                        <Image
-                          source={{ uri: avatar }}
-                          style={styles.cardImage}
-                        />
-                      ) : (
-                        <View style={styles.cardImageFallback}>
-                          <Ionicons name="person" size={36} color="#fff" />
-                        </View>
-                      )}
-
-                      <View style={styles.cardBadge}>
-                        <Text style={styles.cardBadgeText} numberOfLines={1}>
-                          {provider.professions?.[0] || "Provider"}
-                        </Text>
+                <View style={styles.cardImageWrapper}>
+                  <View
+                    style={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 36,
+                      overflow: "hidden",
+                      backgroundColor: "#e5e7eb",
+                      position: "absolute",
+                      top: 12,
+                      left: 12,
+                      zIndex: 10,
+                    }}
+                  >
+                    {avatar ? (
+                      <Image
+                        source={{ uri: avatar }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          flex: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#16a34a",
+                        }}
+                      >
+                        <Ionicons name="person" size={32} color="#fff" />
                       </View>
-                    </View>
+                    )}
+                  </View>
+
+                  {/* Background placeholder behind the circle */}
+                  <View
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      backgroundColor: "#dcfce7",
+                    }}
+                  />
+              </View>
+
 
                     <View style={styles.cardBody}>
                       <Text style={styles.cardTitle} numberOfLines={2}>
@@ -4496,6 +4530,7 @@ bookButtonLabel: {
   fontSize: 15,
   fontWeight: "600",
   color: "#ffffff",
+  
 },
 
 professionChipsContainer: {
