@@ -26,6 +26,14 @@ import { SafeAreaView } from "react-native";
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
   console.log("### API base URL =", API);
 
+  const resolveImageUrl = (url) => {
+    if (!url || typeof url !== "string") return null;
+    if (url.startsWith("http")) return url;
+    if (url.startsWith("//")) return `https:${url}`;
+    const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+    return `${API}${normalizedPath}`;
+  };
+
 // ✅ add this block:
 let MapView;
 let Marker;
@@ -1137,6 +1145,11 @@ function ClientHomeScreen({ navigation }) {
     setCurrentProvider(nearbyProviders[index] || null);
   };
 
+  const handleProviderPress = (provider) => {
+    if (!provider) return;
+    navigation.navigate("Search", { provider });
+  };
+
   return (
       <ScrollView contentContainerStyle={styles.homeScroll}>
         <View style={{ alignItems: "center", marginBottom: 24 }}>
@@ -1202,14 +1215,17 @@ function ClientHomeScreen({ navigation }) {
               onMomentumScrollEnd={handleCarouselScroll}
             >
               {nearbyProviders.map((provider) => {
-                const avatar =
-                  provider.avatar_url || provider.profile_photo_url;
+                const avatar = resolveImageUrl(
+                  provider.avatar_url || provider.profile_photo_url
+                );
                 const servicesLabel = (provider.services || []).join(" · ");
 
                 return (
-                  <View
+                  <TouchableOpacity
                     key={provider.id || provider.name}
                     style={styles.providerCard}
+                    activeOpacity={0.9}
+                    onPress={() => handleProviderPress(provider)}
                   >
                     <View style={styles.cardImageWrapper}>
                       {avatar ? (
@@ -1272,7 +1288,7 @@ function ClientHomeScreen({ navigation }) {
                         </Text>
                       ) : null}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
@@ -1307,7 +1323,7 @@ function AppointmentsScreen({ token, showFlash }) {
 
 
 
-function SearchScreen({ token, showFlash }) {
+function SearchScreen({ token, showFlash, navigation, route }) {
  
 
   const [filteredProviders, setFilteredProviders] = useState([]);
@@ -1357,6 +1373,9 @@ function SearchScreen({ token, showFlash }) {
     return R * c;
   };
 
+  const getProviderId = (provider) =>
+    provider?.provider_id ?? provider?.id ?? null;
+
   const handleSearchSubmit = () => {
     // when the user hits enter/search on the keyboard
     setHasSearched(true);
@@ -1394,6 +1413,20 @@ function SearchScreen({ token, showFlash }) {
     // actually run it on mount
     loadProviders();
   }, []);
+
+  useEffect(() => {
+    const providerFromNav = route?.params?.provider;
+    if (!providerFromNav) return;
+
+    const incomingId = getProviderId(providerFromNav);
+    const currentId = getProviderId(selectedProvider);
+    if (incomingId && incomingId === currentId) return;
+
+    setSearchQuery(providerFromNav.name || "");
+    setHasSearched(true);
+    setFilteredProviders([providerFromNav]);
+    handleSelectProvider(providerFromNav);
+  }, [route?.params?.provider, selectedProvider]);
 
 
 
@@ -1540,6 +1573,13 @@ function SearchScreen({ token, showFlash }) {
   const handleSelectProvider = async (provider) => {
     setSelectedProvider(provider);
 
+    const providerId = getProviderId(provider);
+    if (!providerId) {
+      setServices([]);
+      setServicesError("Provider information is missing.");
+      return;
+    }
+
     // Reset downstream state
     setServices([]);
     setServicesError("");
@@ -1553,7 +1593,7 @@ function SearchScreen({ token, showFlash }) {
       setServicesLoading(true);
 
       const res = await axios.get(
-        `${API}/providers/${provider.provider_id}/services`
+        `${API}/providers/${providerId}/services`
       );
       setServices(res.data || []);
     } catch (err) {
@@ -1577,11 +1617,14 @@ function SearchScreen({ token, showFlash }) {
 
     if (!selectedProvider) return;
 
-    await loadAvailability(selectedProvider.provider_id, service.id);
+    await loadAvailability(getProviderId(selectedProvider), service.id);
   };
 
   const handleBookAppointment = async () => {
     if (!selectedService || !selectedSlot || !selectedProvider) return;
+
+    const providerId = getProviderId(selectedProvider);
+    if (!providerId) return;
 
     try {
       setBookingLoading(true);
@@ -1608,7 +1651,7 @@ function SearchScreen({ token, showFlash }) {
       );
 
       // Refresh availability so this slot disappears
-      await loadAvailability(selectedProvider.provider_id, selectedService.id);
+      await loadAvailability(providerId, selectedService.id);
 
       // Clear selection
       setSelectedSlot(null);
@@ -1631,7 +1674,7 @@ function SearchScreen({ token, showFlash }) {
       try {
         if (selectedProvider && selectedService) {
           await loadAvailability(
-            selectedProvider.provider_id,
+            providerId,
             selectedService.id
           );
         }
@@ -1782,11 +1825,11 @@ function SearchScreen({ token, showFlash }) {
                 filteredProviders.length > 0 &&
                 filteredProviders.map((p) => (
                 <TouchableOpacity
-                  key={p.provider_id}
+                  key={getProviderId(p)}
                   style={[
                     styles.serviceRow,
                     selectedProvider &&
-                      selectedProvider.provider_id === p.provider_id && {
+                      getProviderId(selectedProvider) === getProviderId(p) && {
                         backgroundColor: "#ecfdf3",
                       },
                   ]}
@@ -3645,7 +3688,14 @@ function MainApp({ token, setToken, showFlash }) {
           >
             <Tab.Screen name="Home" component={ClientHomeScreen} />
             <Tab.Screen name="Search">
-              {() => <SearchScreen token={token} showFlash={showFlash} />}
+              {({ navigation, route }) => (
+                <SearchScreen
+                  token={token}
+                  showFlash={showFlash}
+                  navigation={navigation}
+                  route={route}
+                />
+              )}
             </Tab.Screen>
             <Tab.Screen name="Appointments">
               {() => <AppointmentsScreen token={token} showFlash={showFlash} />}
