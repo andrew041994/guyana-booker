@@ -1,5 +1,4 @@
 import os
-import secrets
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,17 +37,23 @@ def _seed_demo_users() -> None:
       - ENV == 'dev'
       - ENABLE_DEMO_SEED=true
 
-    Uses a strong random password unless DEMO_USER_PASSWORD is set.
+    Requires DEMO_USER_PASSWORD to be set to a strong value; never logs
+    credentials.
     """
     if not settings.ENABLE_DEMO_SEED or settings.ENV != "dev":
         return
 
     demo_password = os.getenv("DEMO_USER_PASSWORD")
-    if not demo_password or len(demo_password) < 12:
-        demo_password = secrets.token_urlsafe(16)
+    if not demo_password:
         print(
-            "[DEMO SEED] Generated random password for demo users. "
-            "Set DEMO_USER_PASSWORD to override."
+            "[DEMO SEED] Skipping demo seed; DEMO_USER_PASSWORD is not set. "
+            "Set a strong password (>=12 chars) to enable seeding in dev."
+        )
+        return
+
+    if len(demo_password) < 12:
+        raise RuntimeError(
+            "DEMO_USER_PASSWORD must be at least 12 characters long for demo seeding."
         )
 
     db: Session = SessionLocal()
@@ -86,10 +91,8 @@ def _seed_demo_users() -> None:
         crud.get_or_create_provider_for_user(db, provider_user.id)
 
         print(
-            "[DEMO SEED] Created/verified demo users "
-            "customer@guyana.com and provider@guyana.com "
-            f"with shared password: {demo_password!r}"
-        )
+            "[DEMO SEED] Created/verified demo users customer@guyana.com and "
+                        "provider@guyana.com using the configured DEMO_USER_PASSWORD."        )
     finally:
         db.close()
 

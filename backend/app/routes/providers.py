@@ -1,6 +1,6 @@
 from typing import List, Optional
 import os
-
+from io import BytesIO
 import cloudinary
 import cloudinary.uploader
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -12,7 +12,9 @@ from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
 from app.config import get_settings
+from PIL import Image, UnidentifiedImageError
 
+Image.MAX_IMAGE_PIXELS = 10_000_000 
 settings = get_settings()
 
 cloudinary.config(
@@ -34,8 +36,64 @@ ALLOWED_AVATAR_CONTENT_TYPES = {
     "image/webp",
 }
 
-MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+ALLOWED_AVATAR_FORMATS = {"JPEG", "PNG", "WEBP"}
 
+MAX_AVATAR_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_AVATAR_DIMENSION = 4096  # cap width/height to avoid extremely large images
+
+def _validate_image_contents(contents: bytes) -> None:
+    """Ensure the uploaded bytes are a real, reasonably sized image."""
+    try:
+        with Image.open(BytesIO(contents)) as img:
+            img_format = (img.format or "").upper()
+            img.verify()
+    except UnidentifiedImageError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is not a valid image.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read uploaded image.",
+        )
+
+    if img_format not in ALLOWED_AVATAR_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image format. Allowed: JPEG, PNG, WEBP.",
+        )
+
+    try:
+        with Image.open(BytesIO(contents)) as img_dim:
+            width, height = img_dim.size
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not inspect image dimensions.",
+        )
+
+    if width > MAX_AVATAR_DIMENSION or height > MAX_AVATAR_DIMENSION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar image dimensions are too large.",
+        )
+
+
+
+def _ensure_pillow():
+    """Import Pillow lazily so missing deps don’t break app startup."""
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Image validation dependency missing (Pillow). Install backend requirements.",
+        ) from exc
+
+    # Guard against decompression bombs
+    Image.MAX_IMAGE_PIXELS = 10_000_000
+    return Image, UnidentifiedImageError
 
 def _scan_bytes_for_viruses(data: bytes) -> None:
     """
@@ -51,6 +109,7 @@ def _scan_bytes_for_viruses(data: bytes) -> None:
     #         status_code=status.HTTP_400_BAD_REQUEST,
     #         detail="Malicious file detected",
     #     )
+ 
     return
 
 
@@ -113,6 +172,8 @@ async def upload_my_avatar(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Avatar file is too large. Maximum size is 5 MB.",
         )
+    
+    _validate_image_contents(contents)
 
     # Optional malware scan
     _scan_bytes_for_viruses(contents)
@@ -151,7 +212,7 @@ async def upload_my_avatar(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Avatar upload did not return a valid URL",
-        )
+)
 
     provider.avatar_url = secure_url
     db.commit()

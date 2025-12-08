@@ -1029,20 +1029,125 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
 
 function ClientHomeScreen({ navigation }) {
+ const [nearbyProviders, setNearbyProviders] = useState([]);
+  const [currentProvider, setCurrentProvider] = useState(null);
+  const [nearbyLoading, setNearbyLoading] = useState(true);
+  const [nearbyError, setNearbyError] = useState("");
+
+  const haversineKm = (lat1, lon1, lat2, lon2) => {
+    if (
+      lat1 == null ||
+      lon1 == null ||
+      lat2 == null ||
+      lon2 == null
+    ) {
+      return null;
+    }
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371; // km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadNearbyProviders = async () => {
+      try {
+        setNearbyLoading(true);
+        setNearbyError("");
+
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setNearbyError(
+            "Location permission is required to show nearby providers."
+          );
+          return;
+        }
+
+        const loc = await Location.getCurrentPositionAsync({});
+        const coords = {
+          lat: loc.coords.latitude,
+          long: loc.coords.longitude,
+        };
+
+        const res = await axios.get(`${API}/providers`);
+        const list = Array.isArray(res.data)
+          ? res.data
+          : res.data?.providers || [];
+
+        const withinRadius = list
+          .map((p) => ({
+            ...p,
+            distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
+          }))
+          .filter(
+            (p) => typeof p.distance_km === "number" && p.distance_km <= 15
+          )
+          .sort(
+            (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+          );
+
+        if (!cancelled) {
+          setNearbyProviders(withinRadius);
+          setCurrentProvider(withinRadius[0] || null);
+        }
+      } catch (err) {
+        console.log(
+          "Error loading nearby providers",
+          err?.response?.data || err?.message
+        );
+        if (!cancelled) {
+          setNearbyError("Could not load nearby providers.");
+        }
+      } finally {
+        if (!cancelled) {
+          setNearbyLoading(false);
+        }
+      }
+    };
+
+    loadNearbyProviders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hasCarousel = nearbyProviders.length > 0;
+
+  const handleCarouselScroll = (event) => {
+    if (!nearbyProviders.length) return;
+
+    const CARD_WIDTH = 280 + 12; // card width + marginRight
+    const offsetX = event?.nativeEvent?.contentOffset?.x ?? 0;
+    const index = Math.min(
+      nearbyProviders.length - 1,
+      Math.max(0, Math.round(offsetX / CARD_WIDTH))
+    );
+
+    setCurrentProvider(nearbyProviders[index] || null);
+  };
+
   return (
-    <View style={styles.center}>
+    <ScrollView contentContainerStyle={styles.homeScroll}>
       <View style={{ alignItems: "center", marginBottom: 24 }}>
         <Image
           source={BookitGYLogoTransparent}
           style={{ width: 260, height: 260, resizeMode: "contain" }}
         />
       </View>
-        <Text
-          style={styles.subtitle}
-          allowFontScaling={false}
-        >
-          Find and book services in {"\n"}Guyana
-        </Text>
+        <Text style={styles.subtitle} allowFontScaling={false}>
+        Find and book services in {"\n"}Guyana
+      </Text>
       <View style={{ marginTop: 30, width: "70%" }}>
         <TouchableOpacity
           style={styles.bookButton}
@@ -1051,7 +1156,105 @@ function ClientHomeScreen({ navigation }) {
           <Text style={styles.bookButtonLabel}>Start searching</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    <View style={[styles.card, styles.homeCard]}>
+        <View style={styles.carouselHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>Providers within 15 km</Text>
+            <Text style={styles.serviceMeta}>
+              Based on your current location
+            </Text>
+          </View>
+          {hasCarousel ? (
+            <View style={styles.carouselBadge}>
+              <Text style={styles.carouselBadgeText}>{
+                nearbyProviders.length
+              }</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {nearbyLoading ? (
+          <View style={{ paddingVertical: 12 }}>
+            <ActivityIndicator />
+            <Text style={styles.serviceMeta}>Loading nearby providers…</Text>
+          </View>
+        ) : null}
+
+        {!nearbyLoading && nearbyError ? (
+          <Text style={styles.errorText}>{nearbyError}</Text>
+        ) : null}
+
+        {!nearbyLoading && !nearbyError && !hasCarousel ? (
+          <Text style={styles.serviceHint}>
+            No providers found within 15 km yet.
+          </Text>
+        ) : null}
+
+        {!nearbyLoading && !nearbyError && hasCarousel ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.carouselList}
+            onMomentumScrollEnd={handleCarouselScroll}
+          >
+            {nearbyProviders.map((provider) => (
+              <View key={provider.id || provider.name} style={styles.providerCard}>
+                <View style={styles.cardImageWrapper}>
+                  {provider.profile_photo_url ? (
+                    <Image
+                      source={{ uri: provider.profile_photo_url }}
+                      style={styles.cardImage}
+                    />
+                  ) : (
+                    <View style={styles.cardImageFallback}>
+                      <Ionicons name="person" size={36} color="#fff" />
+                    </View>
+                  )}
+
+                  <View style={styles.cardBadge}>
+                    <Text style={styles.cardBadgeText} numberOfLines={1}>
+                      {provider.professions?.[0] || "Provider"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {provider.name}
+                  </Text>
+                  {provider.distance_km != null ? (
+                    <Text style={styles.cardMeta}>
+                      {provider.distance_km.toFixed(1)} km away
+                    </Text>
+                  ) : null}
+                  {provider.address ? (
+                    <Text style={styles.cardSubtitle} numberOfLines={1}>
+                      {provider.address}
+                    </Text>
+                  ) : null}
+                  {provider.professions?.length ? (
+                    <Text style={styles.cardMeta} numberOfLines={1}>
+                      {provider.professions.join(", ")}
+                    </Text>
+                  ) : null}
+                  {provider.bio ? (
+                    <Text style={styles.cardDescription} numberOfLines={2}>
+                      {provider.bio}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        {currentProvider ? (
+          <Text style={styles.carouselActiveLabel} numberOfLines={1}>
+            Viewing: {currentProvider.name}
+          </Text>
+        ) : null}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -3560,6 +3763,17 @@ function App() {
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
+
+   homeScroll: {
+    flexGrow: 1,
+    backgroundColor: "#f0fdf4",
+    padding: 20,
+    paddingTop: 60,
+  },
+  homeCard: {
+    width: "100%",
+  },
+
   flashText: {
     textAlign: "center",
     fontSize: 14,
@@ -3573,6 +3787,17 @@ function App() {
     alignItems: "center",
     padding: 20,
   },
+
+   homeScroll: {
+    flexGrow: 1,
+    backgroundColor: "#f0fdf4",
+    padding: 20,
+    paddingTop: 60,
+  },
+  homeCard: {
+    width: "100%",
+  },
+
   loadingText: {
     marginTop: 12,
     fontSize: 16,
@@ -3674,6 +3899,80 @@ function App() {
     color: "#166534",
     marginBottom: 10,
   },
+
+  carouselHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  carouselBody: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  carouselBadge: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#ecfdf3",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  carouselBadgeText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  carouselAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    marginRight: 12,
+  },
+  carouselAvatarFallback: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    marginRight: 12,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  carouselAvatarInitial: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  carouselNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+  },
+  carouselButton: {
+    backgroundColor: "#dcfce7",
+    borderColor: "#bbf7d0",
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  carouselButtonDisabled: {
+    opacity: 0.5,
+  },
+  carouselButtonText: {
+    color: "#166534",
+    fontWeight: "600",
+  },
+  carouselCounter: {
+    fontSize: 14,
+    color: "#166534",
+    fontWeight: "600",
+  },
+
   actionButton: {
     backgroundColor: "#ffffff",
     paddingVertical: 10,
