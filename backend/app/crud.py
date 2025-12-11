@@ -496,15 +496,24 @@ def create_booking(
     if not provider_user:
         raise ValueError("Provider user not found")
 
-    # Compute end time
+    # Current local time (Guyana, naive to match DB usage)
+    now = now_local_naive()
+
+    # Defensive: do not allow bookings in the past
+    if booking.start_time <= now:
+        raise ValueError("Cannot book a time in the past")
+
+    # Compute end time based on service duration
     end_time = booking.start_time + timedelta(
         minutes=service.duration_minutes
     )
 
-    # Check overlapping bookings
+    # Check overlapping *future/ongoing* confirmed bookings for this same service
     overlap = (
         db.query(models.Booking)
         .filter(models.Booking.service_id == booking.service_id)
+        .filter(models.Booking.status == "confirmed")
+        .filter(models.Booking.end_time > now)  # ignore bookings that already ended
         .filter(
             models.Booking.start_time < end_time,
             models.Booking.end_time > booking.start_time,
@@ -1017,6 +1026,7 @@ def delete_catalog_image_for_provider(
     return True
 
 
+
 def get_provider_availability(
     db: Session,
     provider_id: int,
@@ -1058,7 +1068,8 @@ def get_provider_availability(
 
     availability = []
 
-    now = now_local_naive()   # ⬅ use Guyana local “now”
+    # Use Guyana local "now"
+    now = now_local_naive()
 
     slot_duration = timedelta(minutes=service.duration_minutes)
 
@@ -1079,13 +1090,14 @@ def get_provider_availability(
             # Bad time format – skip this day
             continue
 
-        day_start = datetime(day_date.year, day_date.month, day_date.day, start_hour, start_minute)
-        day_end = datetime(day_date.year, day_date.month, day_date.day, end_hour, end_minute)
+        day_start = datetime(
+            day_date.year, day_date.month, day_date.day, start_hour, start_minute
+        )
+        day_end = datetime(
+            day_date.year, day_date.month, day_date.day, end_hour, end_minute
+        )
 
-        # Don't offer slots in the past for *today*
-        if day_date == now.date() and now > day_start:
-            # Round "now" down to nearest minute
-            day_start = now.replace(second=0, microsecond=0)
+        is_today = (day_date == now.date())
 
         # Get existing confirmed bookings for this provider on that day
         bookings = (
@@ -1102,13 +1114,21 @@ def get_provider_availability(
 
         def overlaps(slot_start, slot_end, booking):
             # True if times intersect
-            return not (slot_end <= booking.start_time or slot_start >= booking.end_time)
+            return not (
+                slot_end <= booking.start_time or slot_start >= booking.end_time
+            )
 
         slot_start = day_start
         slots_for_day = []
 
         while slot_start + slot_duration <= day_end:
             slot_end = slot_start + slot_duration
+
+            # For *today*, don't offer slots that start in the past
+            # (but keep them aligned to working hours)
+            if is_today and slot_start <= now:
+                slot_start += slot_duration
+                continue
 
             # Check for overlap with any existing booking
             conflict = False
@@ -1132,6 +1152,7 @@ def get_provider_availability(
             )
 
     return availability
+
 
 
 def list_todays_bookings_for_provider(db: Session, provider_id: int):
