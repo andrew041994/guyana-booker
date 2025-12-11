@@ -162,14 +162,14 @@ function Login({ onLogin }) {
                 boxShadow: '0 12px 32px rgba(16,185,129,0.25)',
               }}
             >
-              <img src="/bookitgy-logo.png" alt="Guyana Booker" style={{ height: '60px', width: '60px', objectFit: 'contain' }} />
+              <img src="/bookitgy-logo.png" alt="BookitGY" style={{ height: '60px', width: '60px', objectFit: 'contain' }} />
             </div>
           </div>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <p style={{ color: '#9ca3af', letterSpacing: '0.08em', fontSize: '12px', textTransform: 'uppercase' }}>
               Welcome back
             </p>
-            <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#f9fafb', margin: '6px 0 8px' }}>Sign in to Guyana Booker</h1>
+            <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#f9fafb', margin: '6px 0 8px' }}>Sign in to BookitGY</h1>
             <p style={{ color: '#d1d5db', fontSize: '15px' }}>
               Manage bookings, providers, and insights from one beautiful dashboard.
             </p>
@@ -245,7 +245,7 @@ function Login({ onLogin }) {
 function Home() {
   return (
     <div style={{ textAlign: 'center', marginTop: '100px' }}>
-      <h1 style={{ color: '#16a34a' }}>Welcome to Guyana Booker Web!</h1>
+      <h1 style={{ color: '#16a34a' }}>Welcome to BookitGY Web!</h1>
       <p>Your Booksy clone is LIVE on web + mobile</p>
       <div style={{ marginTop: '20px' }}>
         <Link to="/admin" style={{ color: '#16a34a', fontWeight: 'bold' }}>

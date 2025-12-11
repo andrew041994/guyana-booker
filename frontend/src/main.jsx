@@ -66,7 +66,7 @@ function App() {
               <img src="/bookitgy-logo.png" alt="BookitGY" />
             </div>
             <p className="eyebrow">Booking platform for Guyana</p>
-            <h1>Welcome back to Guyana Booker</h1>
+            <h1>Welcome back to BookitGY</h1>
             <p className="subtitle">
               Manage appointments, track providers, and keep customers happy from a single, secure dashboard.
             </p>
@@ -236,7 +236,7 @@ const distanceBetween = (coordA, coordB) => {
 
     return (
       <div className="text-center mt-20 px-4">
-        <h1 className="text-6xl font-bold text-green-600 mb-4">Guyana Booker is LIVE!</h1>
+        <h1 className="text-6xl font-bold text-green-600 mb-4">BookitGY is LIVE!</h1>
         <p className="text-xl mb-12">booking app for Guyana</p>
         {token && (
           <Link
@@ -320,7 +320,7 @@ const distanceBetween = (coordA, coordB) => {
             <img src="/bookitgy-logo.png" alt="BookitGY" />
             <div className="brand-text">
               <span className="brand-name">BookitGY</span>
-              <span className="brand-subtitle">Guyana Booker</span>
+              <span className="brand-subtitle">BookitGY</span>
             </div>
           </Link>
           <div className="nav-actions">
