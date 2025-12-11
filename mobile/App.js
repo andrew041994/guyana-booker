@@ -5026,7 +5026,7 @@ function ProviderBillingScreen({ token, showFlash }) {
               </Text>
             </View>
             <View style={styles.billingTotalsRow}>
-              <Text style={styles.billingTotalsLabel}>Platform fee (5%)</Text>
+              <Text style={styles.billingTotalsLabel}>Platform fee (10%)</Text>
               <Text style={styles.billingTotalsValue}>
                 {formatMoney(bill.platformFee)}
               </Text>

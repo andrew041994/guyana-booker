@@ -657,7 +657,9 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.end_time,
             models.Booking.status,
             models.Service.name.label("service_name"),
+            models.Service.price_gyd.label("service_price_gyd"),
             models.User.full_name.label("customer_name"),
+            
         )
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
@@ -674,6 +676,7 @@ def list_bookings_for_provider(db: Session, provider_id: int):
         {
             "id": r.id,
             "service_name": r.service_name,
+            "service_price_gyd": float(r.service_price_gyd or 0.0),
             "customer_name": r.customer_name,
             "start_time": r.start_time,
             "end_time": r.end_time,
