@@ -1,14 +1,15 @@
 diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 54f1154b687321e49c3c287eb1a8a1130c529aed..f22eec15fc72ae3832b2a98ce1430dd5a351b606 100644
+index f22eec15fc72ae3832b2a98ce1430dd5a351b606..7b3b7fde3a9691831c383dbb7b487bce621646f1 100644
 --- a/frontend/src/App.jsx
 +++ b/frontend/src/App.jsx
-@@ -1,30 +1,31 @@
+@@ -1,31 +1,32 @@
  import React, { useEffect, useMemo, useState } from 'react';
  import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
  import axios from 'axios';
  
  const API = 'http://localhost:8000';
-+const DEFAULT_SERVICE_CHARGE = 10;
+ const DEFAULT_SERVICE_CHARGE = 10;
++const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
  
  const sampleProviders = [
    {
@@ -34,81 +35,71 @@ index 54f1154b687321e49c3c287eb1a8a1130c529aed..f22eec15fc72ae3832b2a98ce1430dd5
      long: -58.2439,
      outstanding: 18000,
      credit: 0,
-@@ -346,61 +347,63 @@ function useLeafletMap(providers) {
-           );
-         });
-     };
+@@ -73,50 +74,63 @@ const sampleCharges = [
+   { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
+   { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
  
-     ensureLeaflet();
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
+ ];
  
-     return () => {
-       if (mapInstance) {
-         mapInstance.remove();
-       }
-       const mapElement = document.getElementById('provider-map');
-       if (mapElement) {
-         mapElement.dataset.ready = 'false';
-         mapElement.innerHTML = '';
-       }
-     };
-   }, [providers]);
- }
+ const signupHistory = [
+   { month: 'Jun', providers: 10, clients: 54 },
+   { month: 'Jul', providers: 14, clients: 62 },
+   { month: 'Aug', providers: 21, clients: 70 },
+   { month: 'Sep', providers: 33, clients: 82 },
+   { month: 'Oct', providers: 40, clients: 95 },
+ ];
  
- function AdminDashboard() {
-   const billingCycleStart = useMemo(() => {
-     const today = new Date();
-     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
-   }, []);
- 
--  const [serviceCharge, setServiceCharge] = useState(10);
-+  const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
-+  const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
-   const [providers, setProviders] = useState(sampleProviders);
-   const [charges, setCharges] = useState(() =>
--    sampleCharges.map((charge) =>
--      charge.month === billingCycleStart
--        ? {
--            ...charge,
--            isPaid: false,
--          }
--        : charge,
--    ),
-+    sampleCharges.map((charge) => {
-+      const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
++const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 +
-+      return {
-+        ...charge,
-+        baseServiceCost,
-+        isPaid: charge.month === billingCycleStart ? false : charge.isPaid ?? false,
-+      };
-+    }),
-   );
-   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
-   const [creditInputs, setCreditInputs] = useState({});
-   const [loadingProviders, setLoadingProviders] = useState(false);
++const loadStoredServiceCharge = () => {
++  const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
++  if (stored === null) return null;
++
++  return normalizeServiceCharge(stored);
++};
++
++const persistServiceCharge = (rate) => {
++  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
++};
++
+ function Login({ onLogin }) {
+   const [email, setEmail] = useState('admin@guyana.com');
+   const [password, setPassword] = useState('pass');
+   const navigate = useNavigate();
  
-   useLeafletMap(providers);
+   const login = async () => {
+     try {
+       const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
+         username: email,
+         password: password,
+       }));
+       const token = res.data.access_token;
+       localStorage.setItem('token', token);
+       axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+       onLogin?.(token);
+       navigate('/admin');
+     } catch {
+       alert('Wrong credentials');
+     }
+   };
  
-   useEffect(() => {
-     const fetchProviders = async () => {
-       try {
-         setLoadingProviders(true);
-         const res = await axios.get(`${API}/providers`);
-         if (Array.isArray(res.data) && res.data.length) {
-           const normalized = res.data.map((p) => ({
-             id: p.provider_id || p.id,
-             name: p.name || 'Provider',
-             location: p.location || 'Unknown area',
-             lat: p.lat,
-             long: p.long,
-             outstanding: Math.floor(Math.random() * 40000) + 5000,
-             credit: 0,
-             isLocked: false,
-             lastActive: '2024-10-10',
-             totalBookings: Math.floor(Math.random() * 40) + 5,
-             cancellations: Math.floor(Math.random() * 5),
-@@ -466,50 +469,65 @@ function AdminDashboard() {
-     providers.forEach((p) => {
+   return (
+     <div
+       style={{
+         minHeight: '100vh',
+@@ -470,62 +484,72 @@ function AdminDashboard() {
        map[p.id] = p;
      });
      return map;
@@ -133,21 +124,33 @@ index 54f1154b687321e49c3c287eb1a8a1130c529aed..f22eec15fc72ae3832b2a98ce1430dd5
      setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
    };
  
-+  const recalculateChargesForRate = (rate) => {
-+    const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
-+    setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
-+    setServiceCharge(safeRate);
-+    setServiceChargeDraft(safeRate);
-+  };
+   const recalculateChargesForRate = (rate) => {
+-    const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
++    const safeRate = normalizeServiceCharge(rate);
+     setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
+     setServiceCharge(safeRate);
+     setServiceChargeDraft(safeRate);
+   };
+ 
++  useEffect(() => {
++    const storedRate = loadStoredServiceCharge();
++    if (storedRate !== null) {
++      recalculateChargesForRate(storedRate);
++    }
++  }, []);
 +
-+  const saveServiceCharge = () => {
-+    recalculateChargesForRate(serviceChargeDraft);
-+  };
-+
-+  const resetServiceCharge = () => {
-+    recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
-+  };
-+
+   const saveServiceCharge = () => {
+-    recalculateChargesForRate(serviceChargeDraft);
++    const safeRate = normalizeServiceCharge(serviceChargeDraft);
++    persistServiceCharge(safeRate);
++    recalculateChargesForRate(safeRate);
+   };
+ 
+   const resetServiceCharge = () => {
+     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
++    localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
+   };
+ 
    const toggleLock = (providerId) => {
      setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
    };
@@ -171,83 +174,3 @@ index 54f1154b687321e49c3c287eb1a8a1130c529aed..f22eec15fc72ae3832b2a98ce1430dd5
  
    const updateSingleChargeStatus = (chargeId, paidState) => {
      setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
-     setSelectedChargeIds((prev) => prev.filter((id) => id !== chargeId));
-   };
-@@ -529,71 +547,71 @@ function AdminDashboard() {
-       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-         <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#111827' }}>Admin Dashboard</h1>
-         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-           <Link to="/" style={{ color: '#16a34a', fontWeight: 600 }}>Home</Link>
-           <Link to="/login" style={{ color: '#16a34a', fontWeight: 600 }}>Login</Link>
-         </div>
-       </div>
- 
-       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-         <StatCard label="Total Providers" value={totalProviders} helper="Across all regions" />
-         <StatCard label="Active Providers (30d)" value={totalActiveProviders} helper="Visited in last 30 days" />
-         <StatCard label="Total Clients" value={420} helper="Includes mobile + web" />
-         <StatCard label="DAU / MAU" value={`${dau} / ${mau}`} helper={`${Math.round((dau / mau) * 100)}% engagement`} />
-       </div>
- 
-       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
-         <ReportSection title="Service Charge & Billing Controls">
-           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
-             <div>
-               <div style={{ color: '#6b7280', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Service Charge</div>
-               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
-                 <input
-                   type="number"
-                   min="0"
-                   max="100"
--                  value={serviceCharge}
--                  onChange={(e) => setServiceCharge(Number(e.target.value))}
-+                  value={serviceChargeDraft}
-+                  onChange={(e) => setServiceChargeDraft(Number(e.target.value))}
-                   style={{ padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
-                 />
-                 <span style={{ color: '#9ca3af' }}>
--                  % of service cost (default 10%). Current billing cycle starts {billingCycleStart}.
-+                  % of service cost (default {DEFAULT_SERVICE_CHARGE}%). Current billing cycle starts {billingCycleStart}. Saved rate: {serviceCharge}%.
-                 </span>
-               </div>
-             </div>
-             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-               <button
-                 style={{ padding: '10px 14px', background: '#16a34a', color: 'white', borderRadius: '10px', border: 'none', fontWeight: 700 }}
--                onClick={() => alert(`Service charge updated to ${serviceCharge}%`)}
-+                onClick={saveServiceCharge}
-               >
-                 Save Changes
-               </button>
-               <button
-                 style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', borderRadius: '10px', border: '1px solid #e5e7eb', fontWeight: 700 }}
--                onClick={() => setServiceCharge(10)}
-+                onClick={resetServiceCharge}
-               >
--                Reset to 10%
-+                Reset to {DEFAULT_SERVICE_CHARGE}%
-               </button>
-             </div>
-           </div>
-         </ReportSection>
- 
-         <ReportSection title="Booking Health">
-           <div style={{ display: 'grid', gap: '8px' }}>
-             <StatCard label="Bookings Today" value={bookingStats.today} />
-             <StatCard label="Bookings This Week" value={bookingStats.thisWeek} />
-             <StatCard label="Bookings This Month" value={bookingStats.thisMonth} />
-           </div>
-         </ReportSection>
-       </div>
- 
-       <ReportSection title="Billing Actions">
-         <div style={{ overflowX: 'auto' }}>
-           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
-             <thead>
-               <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
-                 <th style={{ padding: '10px' }}>
-                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                     <input type="checkbox" checked={selectedChargeIds.length === charges.length} onChange={toggleAllChargesSelection} />
-                     <span>Select</span>
-                   </div>
-                 </th>

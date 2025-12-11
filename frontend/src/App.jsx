@@ -4,6 +4,7 @@ import axios from 'axios';
 
 const API = 'http://localhost:8000';
 const DEFAULT_SERVICE_CHARGE = 10;
+const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
 
 const sampleProviders = [
   {
@@ -94,6 +95,19 @@ const signupHistory = [
   { month: 'Sep', providers: 33, clients: 82 },
   { month: 'Oct', providers: 40, clients: 95 },
 ];
+
+const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+
+const loadStoredServiceCharge = () => {
+  const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
+  if (stored === null) return null;
+
+  return normalizeServiceCharge(stored);
+};
+
+const persistServiceCharge = (rate) => {
+  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
+};
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState('admin@guyana.com');
@@ -492,18 +506,28 @@ function AdminDashboard() {
   };
 
   const recalculateChargesForRate = (rate) => {
-    const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
+    const safeRate = normalizeServiceCharge(rate);
     setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
     setServiceCharge(safeRate);
     setServiceChargeDraft(safeRate);
   };
 
+  useEffect(() => {
+    const storedRate = loadStoredServiceCharge();
+    if (storedRate !== null) {
+      recalculateChargesForRate(storedRate);
+    }
+  }, []);
+
   const saveServiceCharge = () => {
-    recalculateChargesForRate(serviceChargeDraft);
+    const safeRate = normalizeServiceCharge(serviceChargeDraft);
+    persistServiceCharge(safeRate);
+    recalculateChargesForRate(safeRate);
   };
 
   const resetServiceCharge = () => {
     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
+    localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
   };
 
   const toggleLock = (providerId) => {
