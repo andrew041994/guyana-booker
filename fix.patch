@@ -1,160 +1,53 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 5b29592cf64a31ae4015d322442744cba6eda798..72609164b731eb0e20a64ec9923c28cbbc13e90c 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -155,93 +155,143 @@ function App() {
-           <div>
-             <p className="eyebrow">Marketing</p>
-             <h1>Admin – Editable Promotions</h1>
-             <p className="header-subtitle">Grant bonus bookings to providers whenever you need.</p>
-           </div>
-         </div>
-         <div className="admin-card">
-           <div className="form-grid">
-             <label className="form-field">
-               <span>Provider ID</span>
-               <input value={providerId} onChange={e => setProviderId(e.target.value)} placeholder="Provider ID" />
-             </label>
-             <label className="form-field">
-               <span>Free bookings</span>
-               <input value={free} onChange={e => setFree(e.target.value)} placeholder="Free bookings" />
-             </label>
-           </div>
-           <button onClick={apply} className="primary-btn">Apply Promotion</button>
-           <p className="muted">Example: Give provider ID 1 → 50 free bookings anytime!</p>
-         </div>
-       </div>
-     )
-   }
+diff --git a/backend/app/models.py b/backend/app/models.py
+index 25c5aee9a716ebccab4776b249b94ebe9b5d54ec..6451291e1d5b1f33b127bda044ea243c68a8c2e7 100644
+--- a/backend/app/models.py
++++ b/backend/app/models.py
+@@ -1,44 +1,41 @@
+ from sqlalchemy import (
+     Column,
+     Integer,
+     String,
+     Text,
+     DateTime,
+     ForeignKey,
+     Boolean,
+     Float,
+     Date,
+     Numeric,
+     Enum,)
  
-   const ServiceChargeSettings = () => {
--    const [draft, setDraft] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
--    const [savedRate, setSavedRate] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
-+    const [draft, setDraft] = React.useState(DEFAULT_SERVICE_CHARGE)
-+    const [savedRate, setSavedRate] = React.useState(DEFAULT_SERVICE_CHARGE)
-+    const [loading, setLoading] = React.useState(false)
-+    const [error, setError] = React.useState("")
+ from .database import Base
+ from datetime import datetime
+ from sqlalchemy.orm import relationship
+-from sqlalchemy.ext.declarative import declarative_base
+-
+-Base = declarative_base()
  
--    const save = () => {
--      const normalized = normalizeServiceCharge(draft)
-+    const applyRate = (rate) => {
-+      const normalized = normalizeServiceCharge(rate)
-       persistServiceCharge(normalized)
-       setSavedRate(normalized)
-       setDraft(normalized)
--      alert(`Service charge saved at ${normalized}%`)
-+    }
-+
-+    React.useEffect(() => {
-+      const fetchRate = async () => {
-+        try {
-+          setLoading(true)
-+          setError("")
-+          const res = await axios.get(`${API}/admin/service-charge`)
-+          const rate =
-+            res.data?.service_charge_percentage ??
-+            res.data?.service_charge_percent ??
-+            (res.data?.service_charge_rate ?? 0) * 100
-+          applyRate(rate)
-+        } catch (e) {
-+          console.log("Falling back to cached service charge", e.message)
-+          const storedRate = loadStoredServiceCharge()
-+          if (storedRate !== null) {
-+            applyRate(storedRate)
-+          }
-+          setError("Could not load the saved service charge. Showing last known rate.")
-+        } finally {
-+          setLoading(false)
-+        }
-+      }
-+
-+      fetchRate()
-+    }, [])
-+
-+    const save = async () => {
-+      const normalized = normalizeServiceCharge(draft)
-+      try {
-+        setLoading(true)
-+        setError("")
-+        const res = await axios.put(`${API}/admin/service-charge`, {
-+          service_charge_percentage: normalized,
-+        })
-+        const rate =
-+          res.data?.service_charge_percentage ??
-+          res.data?.service_charge_percent ??
-+          (res.data?.service_charge_rate ?? 0) * 100
-+        applyRate(rate)
-+        alert(`Service charge saved at ${rate}%`)
-+      } catch (e) {
-+        console.error("Failed to save service charge", e.message)
-+        setError("Could not save the service charge. Please try again.")
-+      } finally {
-+        setLoading(false)
-+      }
-     }
  
-     const reset = () => {
--      persistServiceCharge(DEFAULT_SERVICE_CHARGE)
--      setSavedRate(DEFAULT_SERVICE_CHARGE)
-       setDraft(DEFAULT_SERVICE_CHARGE)
-+      save()
-     }
  
-     return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Billing</p>
-             <h1>Service Charge</h1>
-             <p className="header-subtitle">Control the percentage fee applied to each service cost.</p>
-           </div>
-         </div>
+ class User(Base):
+     __tablename__ = "users"
+     id = Column(Integer, primary_key=True, index=True)
+     email = Column(String, unique=True, index=True)
+     hashed_password = Column(String)
+     full_name = Column(String)
+     phone = Column(String)
+     whatsapp = Column(String)  # e.g. whatsapp:+592xxxxxxx
+     expo_push_token = Column(String, nullable=True)
+     location = Column(String)
+     lat = Column(Float, nullable=True)
+     long = Column(Float, nullable=True)
+     is_provider = Column(Boolean, default=False)
+     is_admin = Column(Boolean, default=False)
+     created_at = Column(DateTime, default=datetime.utcnow)
+     avatar_url = Column(String, nullable=True)   # 👈 NEW
  
-         <div className="admin-card">
-           <div className="form-grid single">
-             <label className="form-field">
-               <span>Service charge percentage</span>
-               <input
-                 type="number"
-                 min="0"
-                 max="100"
-                 value={draft}
-                 onChange={(e) => setDraft(Number(e.target.value))}
-               />
-             </label>
-           </div>
-+          {error && <p className="form-error">{error}</p>}
-           <p className="muted">Current saved rate: <strong>{savedRate}%</strong>. Values are clamped between 0% and 100%.</p>
-+          {loading && <p className="muted">Loading latest service charge…</p>}
-           <div className="button-row">
--            <button onClick={save} className="primary-btn">Save service charge</button>
-+            <button onClick={save} className="primary-btn">{loading ? 'Saving…' : 'Save service charge'}</button>
-             <button onClick={reset} className="ghost-btn">Reset to default ({DEFAULT_SERVICE_CHARGE}%)</button>
-           </div>
-         </div>
-       </div>
-     )
-   }
  
-   const Home = () => (
-     <div className="landing-shell">
-       <div className="landing-glow landing-glow-one" />
-       <div className="landing-glow landing-glow-two" />
-       <div className="landing-card">
-         <div className="logo-circle">
-           <img src="/bookitgy-logo.png" alt="BookitGY" />
-         </div>
-         <p className="eyebrow">Booking platform for Guyana</p>
-         <h1>BookitGY Admin</h1>
-         <p className="subtitle">
-           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
-         </p>
- 
-         <div className="landing-actions">
-           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
-             {token ? 'Go to dashboard' : 'Login'}
-           </Link>
+ class Provider(Base):
+     __tablename__ = "providers"
+     id = Column(Integer, primary_key=True, index=True)
+     user_id = Column(Integer, ForeignKey("users.id"))
  
 EOF
 )

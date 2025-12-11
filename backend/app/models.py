@@ -14,9 +14,6 @@ from sqlalchemy import (
 from .database import Base
 from datetime import datetime
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
 
 
 

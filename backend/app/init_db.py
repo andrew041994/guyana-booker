@@ -11,6 +11,7 @@ just by importing models. This is safer and gives you control.
 """
 
 from .database import Base, engine  # <-- relative import inside app package
+from app import models  # Ensure all models are registered on Base.metadata
 
 
 def init_db() -> None:
