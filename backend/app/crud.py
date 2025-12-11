@@ -451,6 +451,26 @@ def upsert_promotion(db: Session, provider_id: int, free_total: int):
     return promo
 
 
+def create_bill_credit(db: Session, provider_id: int, amount_gyd: float):
+    credit = models.BillCredit(
+        provider_id=provider_id,
+        amount_gyd=Decimal(str(amount_gyd or 0)),
+    )
+    db.add(credit)
+    db.commit()
+    db.refresh(credit)
+    return credit
+
+
+def get_provider_credit_balance(db: Session, provider_id: int) -> float:
+    total = (
+        db.query(func.coalesce(func.sum(models.BillCredit.amount_gyd), 0))
+        .filter(models.BillCredit.provider_id == provider_id)
+        .scalar()
+    )
+    return float(total or 0.0)
+
+
 # ---------------------------------------------------------------------------
 # Booking with promotion + lock check
 # ---------------------------------------------------------------------------
@@ -690,7 +710,7 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     Sum of all unpaid fees for this provider, in GYD.
     Assumes Bill.fee_gyd is only populated after appointments have finished.
     """
-    total = (
+    total_fees = (
         db.query(func.coalesce(func.sum(models.Bill.fee_gyd), 0))
         .filter(
             models.Bill.provider_id == provider_id,
@@ -698,7 +718,13 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
         )
         .scalar()
     )
-    return float(total or 0.0)
+    credits = get_provider_credit_balance(db, provider_id)
+
+    net_due = Decimal(str(total_fees or 0)) - Decimal(str(credits or 0))
+    if net_due < 0:
+        net_due = Decimal("0")
+
+    return float(net_due)
 
 
 def list_bookings_for_provider(db: Session, provider_id: int):

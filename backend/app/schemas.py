@@ -139,8 +139,15 @@ class BookingSummary(BaseModel):
     status: str
 
 
-class PromotionUpdate(BaseModel):
-    free_bookings_total: int
+class BillCreditUpdate(BaseModel):
+    credit_gyd: float
+
+
+class BillCreditOut(BaseModel):
+    provider_id: int
+    account_number: str
+    credit_applied_gyd: float
+    total_credit_balance_gyd: float
 
 
 class ProviderProfileOut(BaseModel):

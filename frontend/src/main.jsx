@@ -139,14 +139,14 @@ function App() {
   }
 
   const AdminPromotions = () => {
-    const [providerId, setProviderId] = React.useState('1')
-    const [free, setFree] = React.useState('20')
+    const [accountNumber, setAccountNumber] = React.useState('ACC-')
+    const [credit, setCredit] = React.useState('2000')
 
     const apply = async () => {
-      await axios.put(`${API}/admin/promotions/${providerId}`, { free_bookings_total: Number(free) }, {
+      await axios.put(`${API}/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) }, {
         headers: { Authorization: `Bearer ${token}` }
       })
-      alert(`Promotion applied! Provider ${providerId} now has ${free} free bookings`)
+      alert(`Bill credit applied! ${credit} GYD added to ${accountNumber}`)
     }
 
     return (
@@ -155,22 +155,22 @@ function App() {
           <div>
             <p className="eyebrow">Marketing</p>
             <h1>Admin – Editable Promotions</h1>
-            <p className="header-subtitle">Grant bonus bookings to providers whenever you need.</p>
+            <p className="header-subtitle">Apply bill credits to provider accounts whenever you need.</p>
           </div>
         </div>
         <div className="admin-card">
           <div className="form-grid">
             <label className="form-field">
-              <span>Provider ID</span>
-              <input value={providerId} onChange={e => setProviderId(e.target.value)} placeholder="Provider ID" />
+              <span>Provider account number</span>
+              <input value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Account number" />
             </label>
             <label className="form-field">
-              <span>Free bookings</span>
-              <input value={free} onChange={e => setFree(e.target.value)} placeholder="Free bookings" />
+              <span>Bill credit (GYD)</span>
+              <input value={credit} onChange={e => setCredit(e.target.value)} placeholder="Amount in GYD" />
             </label>
           </div>
-          <button onClick={apply} className="primary-btn">Apply Promotion</button>
-          <p className="muted">Example: Give provider ID 1 → 50 free bookings anytime!</p>
+          <button onClick={apply} className="primary-btn">Apply Credit</button>
+          <p className="muted">Example: Add a $5,000 GYD credit to account ACC-1234 so it reduces their next bill.</p>
         </div>
       </div>
     )

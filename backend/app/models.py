@@ -90,6 +90,15 @@ class Bill(Base):
     is_paid = Column(Boolean, default=False)
     due_date = Column(DateTime)
 
+
+class BillCredit(Base):
+    __tablename__ = "bill_credits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+    amount_gyd = Column(Numeric(10, 2), default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class Promotion(Base):
     __tablename__ = "promotions"
     id = Column(Integer, primary_key=True, index=True)

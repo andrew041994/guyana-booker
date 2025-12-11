@@ -1,53 +1,102 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/models.py b/backend/app/models.py
-index 25c5aee9a716ebccab4776b249b94ebe9b5d54ec..6451291e1d5b1f33b127bda044ea243c68a8c2e7 100644
---- a/backend/app/models.py
-+++ b/backend/app/models.py
-@@ -1,44 +1,41 @@
- from sqlalchemy import (
-     Column,
-     Integer,
-     String,
-     Text,
-     DateTime,
-     ForeignKey,
-     Boolean,
-     Float,
-     Date,
-     Numeric,
-     Enum,)
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 72609164b731eb0e20a64ec9923c28cbbc13e90c..04889df66031a3f0817bf330d709034e7e5dea06 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -117,82 +117,82 @@ function App() {
+                 type="password"
+                 name="password"
+                 value={password}
+                 onChange={(e) => setPassword(e.target.value)}
+                 placeholder="••••••••"
+                 autoComplete="current-password"
+               />
+             </label>
  
- from .database import Base
- from datetime import datetime
- from sqlalchemy.orm import relationship
--from sqlalchemy.ext.declarative import declarative_base
--
--Base = declarative_base()
+             {error && <p className="form-error">{error}</p>}
  
+             <button className="primary-btn" disabled={loading}>
+               {loading ? 'Signing in…' : 'Continue'}
+             </button>
  
+             <p className="credentials-hint">
+               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
+             </p>
+           </form>
+         </div>
+       </div>
+     )
+   }
  
- class User(Base):
-     __tablename__ = "users"
-     id = Column(Integer, primary_key=True, index=True)
-     email = Column(String, unique=True, index=True)
-     hashed_password = Column(String)
-     full_name = Column(String)
-     phone = Column(String)
-     whatsapp = Column(String)  # e.g. whatsapp:+592xxxxxxx
-     expo_push_token = Column(String, nullable=True)
-     location = Column(String)
-     lat = Column(Float, nullable=True)
-     long = Column(Float, nullable=True)
-     is_provider = Column(Boolean, default=False)
-     is_admin = Column(Boolean, default=False)
-     created_at = Column(DateTime, default=datetime.utcnow)
-     avatar_url = Column(String, nullable=True)   # 👈 NEW
+   const AdminPromotions = () => {
+-    const [providerId, setProviderId] = React.useState('1')
+-    const [free, setFree] = React.useState('20')
++    const [accountNumber, setAccountNumber] = React.useState('ACC-')
++    const [credit, setCredit] = React.useState('2000')
  
+     const apply = async () => {
+-      await axios.put(`${API}/admin/promotions/${providerId}`, { free_bookings_total: Number(free) }, {
++      await axios.put(`${API}/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) }, {
+         headers: { Authorization: `Bearer ${token}` }
+       })
+-      alert(`Promotion applied! Provider ${providerId} now has ${free} free bookings`)
++      alert(`Bill credit applied! ${credit} GYD added to ${accountNumber}`)
+     }
  
- class Provider(Base):
-     __tablename__ = "providers"
-     id = Column(Integer, primary_key=True, index=True)
-     user_id = Column(Integer, ForeignKey("users.id"))
+     return (
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Marketing</p>
+             <h1>Admin – Editable Promotions</h1>
+-            <p className="header-subtitle">Grant bonus bookings to providers whenever you need.</p>
++            <p className="header-subtitle">Apply bill credits to provider accounts whenever you need.</p>
+           </div>
+         </div>
+         <div className="admin-card">
+           <div className="form-grid">
+             <label className="form-field">
+-              <span>Provider ID</span>
+-              <input value={providerId} onChange={e => setProviderId(e.target.value)} placeholder="Provider ID" />
++              <span>Provider account number</span>
++              <input value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Account number" />
+             </label>
+             <label className="form-field">
+-              <span>Free bookings</span>
+-              <input value={free} onChange={e => setFree(e.target.value)} placeholder="Free bookings" />
++              <span>Bill credit (GYD)</span>
++              <input value={credit} onChange={e => setCredit(e.target.value)} placeholder="Amount in GYD" />
+             </label>
+           </div>
+-          <button onClick={apply} className="primary-btn">Apply Promotion</button>
+-          <p className="muted">Example: Give provider ID 1 → 50 free bookings anytime!</p>
++          <button onClick={apply} className="primary-btn">Apply Credit</button>
++          <p className="muted">Example: Add a $5,000 GYD credit to account ACC-1234 so it reduces their next bill.</p>
+         </div>
+       </div>
+     )
+   }
+ 
+   const ServiceChargeSettings = () => {
+     const [draft, setDraft] = React.useState(DEFAULT_SERVICE_CHARGE)
+     const [savedRate, setSavedRate] = React.useState(DEFAULT_SERVICE_CHARGE)
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState("")
+ 
+     const applyRate = (rate) => {
+       const normalized = normalizeServiceCharge(rate)
+       persistServiceCharge(normalized)
+       setSavedRate(normalized)
+       setDraft(normalized)
+     }
+ 
+     React.useEffect(() => {
+       const fetchRate = async () => {
+         try {
+           setLoading(true)
+           setError("")
+           const res = await axios.get(`${API}/admin/service-charge`)
+           const rate =
  
 EOF
 )

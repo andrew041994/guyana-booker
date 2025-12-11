@@ -31,3 +31,33 @@ def update_service_charge(
 ):
     pct = crud.update_platform_service_charge(db, payload.service_charge_percentage)
     return {"service_charge_percentage": float(pct)}
+
+
+@router.put(
+    "/promotions/{account_number}",
+    response_model=schemas.BillCreditOut,
+)
+def apply_bill_credit(
+    account_number: str,
+    payload: schemas.BillCreditUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.account_number == account_number)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    credit = crud.create_bill_credit(db, provider.id, payload.credit_gyd)
+    balance = crud.get_provider_credit_balance(db, provider.id)
+
+    return {
+        "provider_id": provider.id,
+        "account_number": provider.account_number,
+        "credit_applied_gyd": float(credit.amount_gyd or 0.0),
+        "total_credit_balance_gyd": float(balance or 0.0),
+    }
