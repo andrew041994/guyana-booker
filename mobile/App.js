@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
          TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
-         TouchableWithoutFeedback, Keyboard,} from "react-native";
+         TouchableWithoutFeedback, Keyboard, RefreshControl,} from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
@@ -284,146 +284,175 @@ function LandingScreen({ goToLogin, goToSignup }) {
       );
     }
 
-const login = async () => {
-  const trimmedEmail = email.trim();
-  const normalizedEmail = trimmedEmail.toLowerCase();
+// 🔹 Dedicated login screen component
+function LoginScreen({
+  setToken,
+  setIsAdmin,
+  goToSignup,
+  goToForgot,
+  goBack,
+  showFlash,
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-    if (showFlash) {
-      showFlash("error", "Please enter a valid email address");
-    } else {
-      Alert.alert("Error", "Please enter a valid email address");
-    }
-    return;
+
+  const login = async () => {
+    const trimmedEmail = email.trim();
+    const normalizedEmail = trimmedEmail.toLowerCase();
+
+    if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+      if (showFlash) {
+        showFlash("error", "Please enter a valid email address");
+      } else {
+        Alert.alert("Error", "Please enter a valid email address");
+      }
+      return;
   }
 
-  try {
-    const body = new URLSearchParams({
-      username: normalizedEmail,
-      password: password,
-    }).toString();
+  setLoading(true);
+
+    try {
+      const body = new URLSearchParams({
+        username: normalizedEmail,
+        password: password,
+      }).toString();
 
     const res = await axios.post(`${API}/auth/login`, body, {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    });
-
-    await AsyncStorage.setItem("accessToken", res.data.access_token);
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
 
     // Try to register push token, but don't fail login if this breaks
-    try {
-      const expoPushToken = await registerForPushNotificationsAsync();
-      if (expoPushToken) {
-        await axios.put(
-          `${API}/users/me`,
-          { expo_push_token: expoPushToken },
-          {
-            headers: {
-              Authorization: `Bearer ${res.data.access_token}`,
-            },
-          }
-        );
+    await AsyncStorage.setItem("accessToken", res.data.access_token);
+
+      // Try to register push token, but don't fail login if this breaks
+      try {
+        const expoPushToken = await registerForPushNotificationsAsync();
+        if (expoPushToken) {
+          await axios.put(
+            `${API}/users/me`,
+            { expo_push_token: expoPushToken },
+            {
+              headers: {
+                Authorization: `Bearer ${res.data.access_token}`,
+              },
+            }
+          );
+        }
+      } catch (err) {
+        console.log("Failed to register push token", err);
       }
-    } catch (err) {
-      console.log("Failed to register push token", err);
-    }
+   
 
     // Successful login
-    setToken({
-      token: res.data.access_token,
-      userId: res.data.user_id,
-      email: res.data.email,
-      isProvider: res.data.is_provider,
-      isAdmin: res.data.is_admin,
-    });
+      // Successful login
+      setToken({
+        token: res.data.access_token,
+        userId: res.data.user_id,
+        email: res.data.email,
+        isProvider: res.data.is_provider,
+        isAdmin: res.data.is_admin,
+      });
 
-    setIsAdmin(normalizedEmail === ADMIN_EMAIL.toLowerCase());
+      setIsAdmin(normalizedEmail === ADMIN_EMAIL.toLowerCase());
 
     if (showFlash) {
-      showFlash("success", "Logged in successfully");
+        showFlash("success", "Logged in successfully");
+      }
+    } catch (e) {
+      console.log("Login error:", e.response?.data || e.message);
+      if (showFlash) {
+        showFlash(
+          "error",
+          "Login failed: wrong email/password or server unreachable"
+        );
+      }
+    } finally {
+      setLoading(false);
     }
-  } catch (e) {
-    console.log("Login error:", e.response?.data || e.message);
-    if (showFlash) {
-      showFlash(
-        "error",
-        "Login failed: wrong email/password or server unreachable"
-      );
-    }
-  }
+  };
 
 return (
-  <KeyboardAvoidingView
-    style={styles.avoider}
-    behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
-  >
-    <ScrollView
-      contentContainerStyle={styles.scrollContent}
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      style={styles.avoider}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
+
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.container}>
-          <View style={styles.logoWrapper}>
-            <Image
-              source={BookitGYLogoTransparent}
-              style={styles.logo}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            <View style={styles.logoWrapper}>
+              <Image
+                source={BookitGYLogoTransparent}
+                style={styles.logo}
+              />
+            </View>
+        <Text style={styles.title}>Login</Text>
+
+          <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              autoCapitalize="none"
+              onChangeText={setEmail}
             />
-          </View>
 
-          <Text style={styles.title}>Login</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            autoCapitalize="none"
-            onChangeText={setEmail}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <View style={{ width: "100%", marginBottom: 10 }}>
-            <Button title="Login" onPress={login} color="#16a34a" />
-          </View>
-
-            {goToForgot && (
-            <TouchableOpacity onPress={goToForgot} style={{ marginBottom: 6 }}>
-              <Text style={{ color: "#0f172a", textDecorationLine: "underline" }}>
-                Forgot password?
-              </Text>
-            </TouchableOpacity>
-          )}
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
 
           {goToSignup && (
             <View style={{ width: "100%", marginBottom: 10 }}>
-              <Button
-                title="Need an account? Sign Up"
-                onPress={goToSignup}
-                color="#166534"
-              />
+               {loading ? (
+                <ActivityIndicator size="large" color="#16a34a" />
+              ) : (
+                <Button title="Login" onPress={login} color="#16a34a" />
+              )}
             </View>
           )}
 
-          {goBack && (
-            <View style={{ width: "100%" }}>
-              <Button title="Back" onPress={goBack} color="#6b7280" />
-            </View>
-          )}
-        </View>
-      </TouchableWithoutFeedback>
-    </ScrollView>
-  </KeyboardAvoidingView>
-);
+          {goToForgot && (
+              <TouchableOpacity onPress={goToForgot} style={{ marginBottom: 6 }}>
+                <Text style={{ color: "#0f172a", textDecorationLine: "underline" }}>
+                  Forgot password?
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {goToSignup && (
+              <View style={{ width: "100%", marginBottom: 10 }}>
+                <Button
+                  title="Need an account? Sign Up"
+                  onPress={goToSignup}
+                  color="#166534"
+                />
+              </View>
+            )}
+
+            {goBack && (
+              <View style={{ width: "100%" }}>
+                <Button title="Back" onPress={goBack} color="#6b7280" />
+              </View>
+            )}
+          </View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 
 }
+
 
 function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
   const [email, setEmail] = useState("");
@@ -744,6 +773,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
 
   const uploadAvatar = async (uri) => {
@@ -833,9 +863,10 @@ function ProfileScreen({ setToken, showFlash, token }) {
     }
   };
 
-  useEffect(() => {
-    const loadProfile = async () => {
+  const loadProfile = useCallback(
+    async (useRefresh = false) => {
       try {
+        if (useRefresh) setRefreshing(true);
         setLoading(true);
         setError("");
 
@@ -892,11 +923,15 @@ function ProfileScreen({ setToken, showFlash, token }) {
         }
       } finally {
         setLoading(false);
+        if (useRefresh) setRefreshing(false);
       }
-    };
+    },
+    [showFlash, token]
+  );
 
+  useEffect(() => {
     loadProfile();
-  }, [token]);
+  }, [loadProfile, token]);
 
     const toggleEditProfile = () => {
     // ensure form reflects current user
@@ -1013,7 +1048,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
   };
 
-  const loadMyBookings = async () => {
+  const loadMyBookings = useCallback(async () => {
     try {
       setBookingsLoading(true);
       setBookingsError("");
@@ -1024,10 +1059,9 @@ function ProfileScreen({ setToken, showFlash, token }) {
         return;
       }
 
-    const res = await axios.get(`${API}/bookings/me`, {
+      const res = await axios.get(`${API}/bookings/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
 
       const rawBookings = res.data;
       const bookingsList = Array.isArray(rawBookings)
@@ -1035,8 +1069,6 @@ function ProfileScreen({ setToken, showFlash, token }) {
         : rawBookings?.bookings || rawBookings?.results || [];
 
       setBookings(bookingsList);
-
-      // setBookings(res.data || []);
     } catch (err) {
       console.log("Error loading my bookings", err.response?.data || err.message);
       setBookingsError("Could not load your bookings.");
@@ -1044,7 +1076,14 @@ function ProfileScreen({ setToken, showFlash, token }) {
     } finally {
       setBookingsLoading(false);
     }
-  };
+  }, [showFlash]);
+
+  const onRefresh = useCallback(async () => {
+    await loadProfile(true);
+    if (showBookings) {
+      await loadMyBookings();
+    }
+  }, [loadMyBookings, loadProfile, showBookings]);
 
   const toggleMyBookings = async () => {
     const next = !showBookings;
@@ -1152,7 +1191,12 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
 
   return (
-    <ScrollView contentContainerStyle={styles.profileScroll}>
+    <ScrollView
+      contentContainerStyle={styles.profileScroll}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       <View style={styles.profileHeader}>
         {/* Avatar */}
         <View style={{ alignItems: "center", marginBottom: 16 }}>
@@ -1403,6 +1447,7 @@ function ClientHomeScreen({
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
   const [nearbyError, setNearbyError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
@@ -1427,71 +1472,66 @@ function ClientHomeScreen({
     return R * c;
   };
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadNearbyProviders = useCallback(async () => {
+    try {
+      setNearbyLoading(true);
+      setNearbyError("");
 
-    const loadNearbyProviders = async () => {
-      try {
-        setNearbyLoading(true);
-        setNearbyError("");
-
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          setNearbyError(
-            "Location permission is required to show nearby providers."
-          );
-          return;
-        }
-
-        const loc = await Location.getCurrentPositionAsync({});
-        const coords = {
-          lat: loc.coords.latitude,
-          long: loc.coords.longitude,
-        };
-
-        const res = await axios.get(`${API}/providers`);
-        const list = Array.isArray(res.data)
-          ? res.data
-          : res.data?.providers || [];
-
-        const withinRadius = list
-          .map((p) => ({
-            ...p,
-            distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
-          }))
-          .filter(
-            (p) => typeof p.distance_km === "number" && p.distance_km <= 15
-          )
-          .sort(
-            (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
-          );
-
-        if (!cancelled) {
-          setNearbyProviders(withinRadius);
-          setCurrentProvider(withinRadius[0] || null);
-          syncFavoritesFromList(withinRadius);
-        }
-      } catch (err) {
-        console.log(
-          "Error loading nearby providers",
-          err?.response?.data || err?.message
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setNearbyError(
+          "Location permission is required to show nearby providers."
         );
-        if (!cancelled) {
-          setNearbyError("Could not load nearby providers.");
-        }
-      } finally {
-        if (!cancelled) {
-          setNearbyLoading(false);
-        }
+        return;
       }
-    };
 
+      const loc = await Location.getCurrentPositionAsync({});
+      const coords = {
+        lat: loc.coords.latitude,
+        long: loc.coords.longitude,
+      };
+
+      const res = await axios.get(`${API}/providers`);
+      const list = Array.isArray(res.data)
+        ? res.data
+        : res.data?.providers || [];
+
+      const withinRadius = list
+        .map((p) => ({
+          ...p,
+          distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
+        }))
+        .filter((p) => typeof p.distance_km === "number" && p.distance_km <= 15)
+        .sort(
+          (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+        );
+
+      setNearbyProviders(withinRadius);
+      setCurrentProvider(withinRadius[0] || null);
+      syncFavoritesFromList(withinRadius);
+    } catch (err) {
+      console.log(
+        "Error loading nearby providers",
+        err?.response?.data || err?.message
+      );
+      setNearbyError("Could not load nearby providers.");
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, [syncFavoritesFromList]);
+
+  useEffect(() => {
     loadNearbyProviders();
+  }, [loadNearbyProviders]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      loadNearbyProviders(),
+      refreshFavoriteProviders ? refreshFavoriteProviders() : Promise.resolve(),
+    ]);
+    setRefreshing(false);
+  }, [loadNearbyProviders, refreshFavoriteProviders]);
 
   const hasCarousel = nearbyProviders.length > 0;
 
@@ -1519,7 +1559,12 @@ function ClientHomeScreen({
 
   return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
-      <ScrollView contentContainerStyle={styles.homeScroll}>
+      <ScrollView
+        contentContainerStyle={styles.homeScroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
         <View style={{ alignItems: "center", marginBottom: 24 }}>
           <Image
             source={BookitGYLogoTransparent}
@@ -1893,6 +1938,7 @@ function AppointmentsScreen({ token, showFlash }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const normalizeStart = (booking) => {
     const iso = booking?.start_time || booking?.start;
@@ -1921,43 +1967,50 @@ function AppointmentsScreen({ token, showFlash }) {
     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
   };
 
-  const fetchBookings = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
+  const fetchBookings = useCallback(
+    async (useRefresh = false) => {
+      try {
+        if (useRefresh) setRefreshing(true);
+        setLoading(true);
+        setError("");
 
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      const authToken = token?.token || storedToken;
+        const storedToken = await AsyncStorage.getItem("accessToken");
+        const authToken = token?.token || storedToken;
 
-      if (!authToken) {
-        setError("Please log in to view your appointments.");
-        setBookings([]);
-        return;
+        if (!authToken) {
+          setError("Please log in to view your appointments.");
+          setBookings([]);
+          return;
+        }
+
+        const res = await axios.get(`${API}/bookings/me`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+
+        const raw = res.data;
+        const list = Array.isArray(raw)
+          ? raw
+          : raw?.bookings || raw?.results || [];
+
+        setBookings(list);
+      } catch (err) {
+        console.log(
+          "Error loading appointments",
+          err.response?.data || err.message
+        );
+        setError("Could not load your appointments.");
+        if (showFlash) {
+          showFlash("error", "Could not load your appointments.");
+        }
+      } finally {
+        setLoading(false);
+        if (useRefresh) setRefreshing(false);
       }
+    },
+    [showFlash, token?.token]
+  );
 
-      const res = await axios.get(`${API}/bookings/me`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-
-      const raw = res.data;
-      const list = Array.isArray(raw)
-        ? raw
-        : raw?.bookings || raw?.results || [];
-
-      setBookings(list);
-    } catch (err) {
-      console.log(
-        "Error loading appointments",
-        err.response?.data || err.message
-      );
-      setError("Could not load your appointments.");
-      if (showFlash) {
-        showFlash("error", "Could not load your appointments.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [showFlash, token?.token]);
+  const handleRefresh = useCallback(() => fetchBookings(true), [fetchBookings]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2145,13 +2198,18 @@ function AppointmentsScreen({ token, showFlash }) {
   };
 
   return (
-  <ScrollView contentContainerStyle={styles.appointmentScroll}>
+  <ScrollView
+    contentContainerStyle={styles.appointmentScroll}
+    refreshControl={
+      <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+    }
+  >
     <View style={styles.card}>
       <View style={styles.appointmentHeader}>
         <Text style={styles.profileTitle}>Appointments</Text>
-        <TouchableOpacity onPress={fetchBookings}>
+        {/* <TouchableOpacity onPress={fetchBookings}>
           <Text style={styles.refreshText}>Refresh</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       {loading && (
@@ -2257,6 +2315,7 @@ function SearchScreen({
   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
   const [bookingLoading, setBookingLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+  const [refreshing, setRefreshing] = useState(false);
 
   //Radius 
   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
@@ -2291,38 +2350,39 @@ function SearchScreen({
   };
 
 
-    // Load providers on mount
+  const loadProviders = useCallback(async () => {
+    try {
+      setProvidersLoading(true);
+      setProvidersError("");
+
+      const res = await axios.get(`${API}/providers`);
+
+      // Always normalize the result to an array
+      const list = Array.isArray(res.data)
+        ? res.data
+        : res.data?.providers || [];
+
+      setProviders(list);
+      setFilteredProviders(list);
+      syncFavoritesFromList(list);
+      return list;
+    } catch (err) {
+      console.log(
+        "Error loading providers",
+        err?.response?.data || err?.message
+      );
+      setProvidersError("Could not load providers.");
+      if (showFlash) showFlash("error", "Could not load providers.");
+      return [];
+    } finally {
+      setProvidersLoading(false);
+    }
+  }, [showFlash, syncFavoritesFromList]);
+
+  // Load providers on mount
   useEffect(() => {
-    const loadProviders = async () => {
-      try {
-        setProvidersLoading(true);
-        setProvidersError("");
-
-        const res = await axios.get(`${API}/providers`);
-
-        // Always normalize the result to an array
-        const list = Array.isArray(res.data)
-          ? res.data
-          : res.data?.providers || [];         
-
-        setProviders(list);
-        setFilteredProviders(list);
-        syncFavoritesFromList(list);
-      } catch (err) {
-        console.log(
-          "Error loading providers",
-          err?.response?.data || err?.message
-        );
-        setProvidersError("Could not load providers.");
-        if (showFlash) showFlash("error", "Could not load providers.");
-      } finally {
-        setProvidersLoading(false);
-      }
-    };
-
-    // actually run it on mount
     loadProviders();
-  }, [syncFavoritesFromList]);
+  }, [loadProviders]);
 
   useEffect(() => {
     const providerFromNav = route?.params?.provider;
@@ -2452,35 +2512,38 @@ function SearchScreen({
   };
 
 
-  const loadAvailability = async (providerId, serviceId) => {
-    try {
-      setAvailabilityLoading(true);
-      setAvailabilityError("");
+  const loadAvailability = useCallback(
+    async (providerId, serviceId) => {
+      try {
+        setAvailabilityLoading(true);
+        setAvailabilityError("");
 
-      const res = await axios.get(
-        `${API}/providers/${providerId}/availability`,
-        {
-          params: {
-            service_id: serviceId,
-            days: 14,
-          },
-        }
-      );
+        const res = await axios.get(
+          `${API}/providers/${providerId}/availability`,
+          {
+            params: {
+              service_id: serviceId,
+              days: 14,
+            },
+          }
+        );
 
-      setAvailability(res.data || []);
-    } catch (err) {
-      console.log(
-        "Error loading availability",
-        err.response?.data || err.message
-      );
-      setAvailabilityError("Could not load availability for this service.");
-      if (showFlash) showFlash("error", "Could not load availability.");
-    } finally {
-      setAvailabilityLoading(false);
-    }
-  };
+        setAvailability(res.data || []);
+      } catch (err) {
+        console.log(
+          "Error loading availability",
+          err.response?.data || err.message
+        );
+        setAvailabilityError("Could not load availability for this service.");
+        if (showFlash) showFlash("error", "Could not load availability.");
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    },
+    [showFlash]
+  );
 
-  const loadProviderCatalog = async (providerId) => {
+  const loadProviderCatalog = useCallback(async (providerId) => {
     try {
       setCatalogLoading(true);
       setCatalogError("");
@@ -2499,10 +2562,10 @@ function SearchScreen({
     } finally {
       setCatalogLoading(false);
     }
-  };
+  }, []);
 
 
-  const handleSelectProvider = async (provider) => {
+  const handleSelectProvider = useCallback(async (provider) => {
     setSelectedProvider(provider);
 
     const providerId = getProviderId(provider);
@@ -2543,19 +2606,44 @@ function SearchScreen({
     } finally {
       setServicesLoading(false);
     }
-  };
+  }, [loadProviderCatalog, showFlash]);
 
-  const handleSelectService = async (service) => {
-    setSelectedService(service);
-    setAvailability([]);
-    setAvailabilityError("");
-    setSelectedDate(null);
-    setSelectedSlot(null);
+  const handleSelectService = useCallback(
+    async (service) => {
+      setSelectedService(service);
+      setAvailability([]);
+      setAvailabilityError("");
+      setSelectedDate(null);
+      setSelectedSlot(null);
 
-    if (!selectedProvider) return;
+      if (!selectedProvider) return;
 
-    await loadAvailability(getProviderId(selectedProvider), service.id);
-  };
+      await loadAvailability(getProviderId(selectedProvider), service.id);
+    },
+    [loadAvailability, selectedProvider]
+  );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const list = await loadProviders();
+
+    if (selectedProvider) {
+      const match = (list || []).find(
+        (p) => getProviderId(p) === getProviderId(selectedProvider)
+      );
+
+      if (match) {
+        await handleSelectProvider(match);
+      } else {
+        setSelectedProvider(null);
+        setServices([]);
+        setAvailability([]);
+        setCatalogImages([]);
+      }
+    }
+
+    setRefreshing(false);
+  }, [handleSelectProvider, loadProviders, selectedProvider]);
 
   const handleBookAppointment = async () => {
     if (!selectedService || !selectedSlot || !selectedProvider) return;
@@ -2666,8 +2754,16 @@ function SearchScreen({
     });
   };
 
-    return (      
-              <ScrollView contentContainerStyle={styles.providerScroll}>
+    return (
+              <ScrollView
+                contentContainerStyle={styles.providerScroll}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={handleRefresh}
+                  />
+                }
+              >
                 <Text style={styles.profileTitle}>Find a provider</Text>
                 <Text style={styles.subtitleSmall}>
                   Search by profession and distance, then pick a service and time.

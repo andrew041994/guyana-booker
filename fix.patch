@@ -1,0 +1,1228 @@
+diff --git a/mobile/App.js b/mobile/App.js
+index 8455b941c9468f35e8eb77d3c82e5fb39826a553..dcad3ed9177f865a409a5d8408d1667d3a73a017 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1,30 +1,30 @@
+ import React, { useState, useEffect, useCallback } from "react";
+ import { useFocusEffect } from "@react-navigation/native";
+ import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
+          TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
+-         TouchableWithoutFeedback, Keyboard,} from "react-native";
++         TouchableWithoutFeedback, Keyboard, RefreshControl,} from "react-native";
+ import { NavigationContainer } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import * as Location from "expo-location";
+ import * as Notifications from "expo-notifications";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import BookitGYLogo from "./assets/bookitgy-logo.png";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { Ionicons } from "@expo/vector-icons";
+ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+ 
+ 
+ 
+ 
+ // import { API } from "./App"; // wherever you define your base URL
+ 
+ 
+ 
+ 
+   const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
+   console.log("### API base URL =", API);
+ 
+   const isValidEmail = (value) => {
+@@ -722,50 +722,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+   );
+ }
+ 
+ 
+ 
+ // Placeholder screens so MainApp compiles — replace with your real ones
+ function ProfileScreen({ setToken, showFlash, token }) {
+   const [user, setUser] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState("");
+    // NEW state for editing profile
+   const [showEdit, setShowEdit] = useState(false);
+   const [editSaving, setEditSaving] = useState(false);
+   const [editProfile, setEditProfile] = useState({
+     full_name: "",
+     phone: "",
+     whatsapp: "",
+     location: "",
+   });
+   // NEW state for "My bookings"
+   const [showBookings, setShowBookings] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(false);
+   const [bookingsError, setBookingsError] = useState("");
+   const [avatarUrl, setAvatarUrl] = useState(null);
++  const [refreshing, setRefreshing] = useState(false);
+ 
+ 
+   const uploadAvatar = async (uri) => {
+     try{
+       const token = await AsyncStorage.getItem("accessToken");
+       if (!token) {
+         alert("No access token found. Please log in again.");
+         return;
+       }
+ 
+       const filename = uri.split("/").pop() || "avatar.jpg";
+       const match = /\.(\w+)$/.exec(filename);
+       const ext = match ? match[1] : "jpg";
+       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+ 
+       const formData = new FormData();
+       formData.append("file", {
+         uri,
+         name: filename,
+         type: mimeType,
+       });
+ 
+       const res = await axios.post(`${API}/users/me/avatar`, formData, {
+         headers: {
+           "Content-Type": "multipart/form-data",
+@@ -811,53 +812,54 @@ function ProfileScreen({ setToken, showFlash, token }) {
+     await uploadAvatar(asset.uri);
+     } catch (err) {
+       console.log("Image picker error:", err);
+     }
+   };
+ 
+ 
+ 
+   const logout = async () => {
+     try {
+       await AsyncStorage.removeItem("accessToken");
+       if (setToken) {
+         setToken(null);
+       }
+       if (showFlash) {
+         showFlash("success", "Logged out successfully");
+       }
+     } catch (err) {
+       console.error("Error during logout", err);
+       if (showFlash) {
+         showFlash("error", "Could not log out. Please try again.");
+       }
+     }
+   };
+ 
+-  useEffect(() => {
+-    const loadProfile = async () => {
++  const loadProfile = useCallback(
++    async (useRefresh = false) => {
+       try {
++        if (useRefresh) setRefreshing(true);
+         setLoading(true);
+         setError("");
+ 
+         const tokenValue = await AsyncStorage.getItem("accessToken");
+ 
+         if (!tokenValue) {
+           setError("No access token found. Please log in again.");
+           setLoading(false);
+           return;
+         }
+ 
+         const headers = {
+           Authorization: `Bearer ${tokenValue}`,
+         };
+ 
+         // 1) Load base user info
+         const res = await axios.get(`${API}/users/me`, { headers });
+ 
+         setUser(res.data);
+         setEditProfile({
+           full_name: res.data.full_name || "",
+           phone: res.data.phone || "",
+           whatsapp: res.data.whatsapp || "",
+           location: res.data.location || "",
+         });
+@@ -870,55 +872,59 @@ function ProfileScreen({ setToken, showFlash, token }) {
+           try {
+             const provRes = await axios.get(
+               `${API}/providers/me/profile`,
+               { headers }
+             );
+             if (provRes.data.avatar_url) {
+               avatar = provRes.data.avatar_url;
+             }
+           } catch (err) {
+             console.log(
+               "Error loading provider avatar for profile",
+               err.response?.data || err.message
+             );
+           }
+         }
+ 
+         setAvatarUrl(avatar);
+       } catch (err) {
+         console.error("Error loading profile", err);
+         setError("Could not load profile.");
+         if (showFlash) {
+           showFlash("error", "Could not load profile information.");
+         }
+       } finally {
+         setLoading(false);
++        if (useRefresh) setRefreshing(false);
+       }
+-    };
++    },
++    [showFlash, token]
++  );
+ 
++  useEffect(() => {
+     loadProfile();
+-  }, [token]);
++  }, [loadProfile, token]);
+ 
+     const toggleEditProfile = () => {
+     // ensure form reflects current user
+     if (user && !showEdit) {
+       setEditProfile({
+         full_name: user.full_name || "",
+         phone: user.phone || "",
+         whatsapp: user.whatsapp || "",
+         location: user.location || "",
+       });
+     }
+     setShowEdit((prev) => !prev);
+   };
+ 
+   const saveProfileChanges = async () => {
+     try {
+       setEditSaving(true);
+       const token = await AsyncStorage.getItem("accessToken");
+       if (!token) {
+         if (showFlash) showFlash("error", "No access token found. Please log in again.");
+         return;
+       }
+ 
+       const payload = {
+         full_name: editProfile.full_name,
+@@ -991,82 +997,86 @@ function ProfileScreen({ setToken, showFlash, token }) {
+ 
+   const handleComingSoon = (label) => {
+     if (showFlash) {
+       showFlash("info", `${label} coming soon`);
+     }
+   };
+ 
+     const formatBookingDate = (iso) => {
+     const d = new Date(iso);
+     return d.toLocaleDateString("en-US", {
+       weekday: "short",
+       month: "short",
+       day: "numeric",
+     });
+   };
+ 
+   const formatBookingTime = (iso) => {
+     const d = new Date(iso);
+     let h = d.getHours();
+     const m = d.getMinutes();
+     const suffix = h >= 12 ? "PM" : "AM";
+     h = h % 12 || 12;
+     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+   };
+ 
+-  const loadMyBookings = async () => {
++  const loadMyBookings = useCallback(async () => {
+     try {
+       setBookingsLoading(true);
+       setBookingsError("");
+ 
+       const token = await AsyncStorage.getItem("accessToken");
+       if (!token) {
+         setBookingsError("No access token found. Please log in again.");
+         return;
+       }
+ 
+-    const res = await axios.get(`${API}/bookings/me`, {
++      const res = await axios.get(`${API}/bookings/me`, {
+         headers: { Authorization: `Bearer ${token}` },
+       });
+ 
+-
+       const rawBookings = res.data;
+       const bookingsList = Array.isArray(rawBookings)
+         ? rawBookings
+         : rawBookings?.bookings || rawBookings?.results || [];
+ 
+       setBookings(bookingsList);
+-
+-      // setBookings(res.data || []);
+     } catch (err) {
+       console.log("Error loading my bookings", err.response?.data || err.message);
+       setBookingsError("Could not load your bookings.");
+       if (showFlash) showFlash("error", "Could not load your bookings.");
+     } finally {
+       setBookingsLoading(false);
+     }
+-  };
++  }, [showFlash]);
++
++  const onRefresh = useCallback(async () => {
++    await loadProfile(true);
++    if (showBookings) {
++      await loadMyBookings();
++    }
++  }, [loadMyBookings, loadProfile, showBookings]);
+ 
+   const toggleMyBookings = async () => {
+     const next = !showBookings;
+     setShowBookings(next);
+     if (next) {
+       await loadMyBookings();
+     }
+   };
+ 
+   const handleClientCancelBooking = (bookingId) => {
+     Alert.alert(
+       "Cancel booking",
+       "Are you sure you want to cancel this booking?",
+       [
+         { text: "No", style: "cancel" },
+         {
+           text: "Yes, cancel",
+           style: "destructive",
+           onPress: async () => {
+             try {
+               const token = await AsyncStorage.getItem("accessToken");
+               if (!token) {
+                 if (showFlash)
+                   showFlash("error", "No access token found. Please log in.");
+                 return;
+@@ -1130,51 +1140,56 @@ function ProfileScreen({ setToken, showFlash, token }) {
+         if (showFlash) {
+           showFlash(
+             "error",
+             "No location is available yet for this booking."
+           );
+         }
+         return;
+       }
+ 
+       Linking.openURL(url);
+     } catch (err) {
+       console.log("Error opening maps", err);
+       if (showFlash) {
+         showFlash("error", "Could not open maps on this device.");
+       }
+     }
+   };
+ 
+   
+ 
+ 
+ 
+ 
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.profileScroll}>
++    <ScrollView
++      contentContainerStyle={styles.profileScroll}
++      refreshControl={
++        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
++      }
++    >
+       <View style={styles.profileHeader}>
+         {/* Avatar */}
+         <View style={{ alignItems: "center", marginBottom: 16 }}>
+           <View style={styles.profileAvatarWrapper}>
+             {user?.avatar_url ? (
+               <Image
+                 source={{ uri: user.avatar_url }}
+                 style={{ width: "100%", height: "100%" }}
+                 resizeMode="cover"
+               />
+             ) : (
+               <View style={styles.profileAvatarFallback}>
+                 <Text style={styles.profileAvatarInitial}>
+                   {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+                 </Text>
+               </View>
+             )}
+           </View>
+ 
+           <TouchableOpacity onPress={pickClientAvatar} style={{ marginTop: 8 }}>
+             <Text
+               style={{
+                 color: "#007AFF",
+                 fontWeight: "500",
+               }}
+@@ -1381,167 +1396,168 @@ function ProfileScreen({ setToken, showFlash, token }) {
+         </TouchableOpacity>
+       </View>
+ 
+     </ScrollView>
+     
+   );
+   
+ }
+ 
+ 
+ 
+ function ClientHomeScreen({
+   navigation,
+   favoriteProviders,
+   favoriteIds,
+   favoritesLoading,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+   refreshFavoriteProviders,
+   }) {
+  const [nearbyProviders, setNearbyProviders] = useState([]);
+   const [currentProvider, setCurrentProvider] = useState(null);
+   const [nearbyLoading, setNearbyLoading] = useState(true);
+   const [nearbyError, setNearbyError] = useState("");
++  const [refreshing, setRefreshing] = useState(false);
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+     }
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
+   };
+ 
+-  useEffect(() => {
+-    let cancelled = false;
+-
+-    const loadNearbyProviders = async () => {
+-      try {
+-        setNearbyLoading(true);
+-        setNearbyError("");
+-
+-        const { status } = await Location.requestForegroundPermissionsAsync();
+-        if (status !== "granted") {
+-          setNearbyError(
+-            "Location permission is required to show nearby providers."
+-          );
+-          return;
+-        }
++  const loadNearbyProviders = useCallback(async () => {
++    try {
++      setNearbyLoading(true);
++      setNearbyError("");
+ 
+-        const loc = await Location.getCurrentPositionAsync({});
+-        const coords = {
+-          lat: loc.coords.latitude,
+-          long: loc.coords.longitude,
+-        };
++      const { status } = await Location.requestForegroundPermissionsAsync();
++      if (status !== "granted") {
++        setNearbyError(
++          "Location permission is required to show nearby providers."
++        );
++        return;
++      }
+ 
+-        const res = await axios.get(`${API}/providers`);
+-        const list = Array.isArray(res.data)
+-          ? res.data
+-          : res.data?.providers || [];
++      const loc = await Location.getCurrentPositionAsync({});
++      const coords = {
++        lat: loc.coords.latitude,
++        long: loc.coords.longitude,
++      };
+ 
+-        const withinRadius = list
+-          .map((p) => ({
+-            ...p,
+-            distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
+-          }))
+-          .filter(
+-            (p) => typeof p.distance_km === "number" && p.distance_km <= 15
+-          )
+-          .sort(
+-            (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+-          );
++      const res = await axios.get(`${API}/providers`);
++      const list = Array.isArray(res.data)
++        ? res.data
++        : res.data?.providers || [];
+ 
+-        if (!cancelled) {
+-          setNearbyProviders(withinRadius);
+-          setCurrentProvider(withinRadius[0] || null);
+-          syncFavoritesFromList(withinRadius);
+-        }
+-      } catch (err) {
+-        console.log(
+-          "Error loading nearby providers",
+-          err?.response?.data || err?.message
++      const withinRadius = list
++        .map((p) => ({
++          ...p,
++          distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
++        }))
++        .filter((p) => typeof p.distance_km === "number" && p.distance_km <= 15)
++        .sort(
++          (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+         );
+-        if (!cancelled) {
+-          setNearbyError("Could not load nearby providers.");
+-        }
+-      } finally {
+-        if (!cancelled) {
+-          setNearbyLoading(false);
+-        }
+-      }
+-    };
+ 
++      setNearbyProviders(withinRadius);
++      setCurrentProvider(withinRadius[0] || null);
++      syncFavoritesFromList(withinRadius);
++    } catch (err) {
++      console.log(
++        "Error loading nearby providers",
++        err?.response?.data || err?.message
++      );
++      setNearbyError("Could not load nearby providers.");
++    } finally {
++      setNearbyLoading(false);
++    }
++  }, [syncFavoritesFromList]);
++
++  useEffect(() => {
+     loadNearbyProviders();
++  }, [loadNearbyProviders]);
+ 
+-    return () => {
+-      cancelled = true;
+-    };
+-  }, []);
++  const handleRefresh = useCallback(async () => {
++    setRefreshing(true);
++    await Promise.all([
++      loadNearbyProviders(),
++      refreshFavoriteProviders ? refreshFavoriteProviders() : Promise.resolve(),
++    ]);
++    setRefreshing(false);
++  }, [loadNearbyProviders, refreshFavoriteProviders]);
+ 
+   const hasCarousel = nearbyProviders.length > 0;
+ 
+   const handleCarouselScroll = (event) => {
+     if (!nearbyProviders.length) return;
+ 
+     const CARD_WIDTH = 280 + 12; // card width + marginRight
+     const offsetX = event?.nativeEvent?.contentOffset?.x ?? 0;
+     const index = Math.min(
+       nearbyProviders.length - 1,
+       Math.max(0, Math.round(offsetX / CARD_WIDTH))
+     );
+ 
+     setCurrentProvider(nearbyProviders[index] || null);
+   };
+ 
+   const handleProviderPress = (provider) => {
+     if (!provider) return;
+     navigation.navigate("Search", { provider });
+   };
+ 
+   useEffect(() => {
+     refreshFavoriteProviders();
+   }, [refreshFavoriteProviders]);
+ 
+   return (
+       <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
+-      <ScrollView contentContainerStyle={styles.homeScroll}>
++      <ScrollView
++        contentContainerStyle={styles.homeScroll}
++        refreshControl={
++          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
++        }
++      >
+         <View style={{ alignItems: "center", marginBottom: 24 }}>
+           <Image
+             source={BookitGYLogoTransparent}
+             style={{ width: 260, height: 260, resizeMode: "contain" }}
+           />
+         </View>
+ 
+         <Text style={styles.subtitle} allowFontScaling={false}>
+           Find and book services in {"\n"}Guyana
+         </Text>
+ 
+         <View
+             style={{
+               marginTop: 10,        // was 30 — now moved up
+               width: "70%",
+               alignSelf: "center",  // ensures it's centered
+               marginBottom: 20, 
+             }}
+           >
+             <TouchableOpacity
+               style={[styles.bookButton, { paddingVertical: 14 }]}
+               onPress={() => navigation.navigate("Search")}
+             >
+               <Text style={styles.bookButtonLabel}>Start searching</Text>
+             </TouchableOpacity>
+@@ -1871,115 +1887,123 @@ function ClientHomeScreen({
+                       {provider.bio ? (
+                         <Text style={styles.cardDescription} numberOfLines={2}>
+                           {provider.bio}
+                         </Text>
+                       ) : null}
+                     </View>
+                   </TouchableOpacity>
+                 );
+               })}
+             </ScrollView>
+           ) : null}
+         </View>
+       </ScrollView>
+       </SafeAreaView>
+     );
+   }
+ 
+ 
+ 
+ 
+ 
+ function AppointmentsScreen({ token, showFlash }) {
+   const [bookings, setBookings] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState("");
++  const [refreshing, setRefreshing] = useState(false);
+ 
+   const normalizeStart = (booking) => {
+     const iso = booking?.start_time || booking?.start;
+     if (!iso) return null;
+     const d = new Date(iso);
+     return Number.isNaN(d.getTime()) ? null : d;
+   };
+ 
+   const formatBookingDate = (iso) => {
+     const d = new Date(iso);
+     if (Number.isNaN(d.getTime())) return "";
+     return d.toLocaleDateString("en-US", {
+       weekday: "short",
+       month: "short",
+       day: "numeric",
+     });
+   };
+ 
+   const formatBookingTime = (iso) => {
+     const d = new Date(iso);
+     if (Number.isNaN(d.getTime())) return "";
+     let h = d.getHours();
+     const m = d.getMinutes();
+     const suffix = h >= 12 ? "PM" : "AM";
+     h = h % 12 || 12;
+     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+   };
+ 
+-  const fetchBookings = useCallback(async () => {
+-    try {
+-      setLoading(true);
+-      setError("");
++  const fetchBookings = useCallback(
++    async (useRefresh = false) => {
++      try {
++        if (useRefresh) setRefreshing(true);
++        setLoading(true);
++        setError("");
+ 
+-      const storedToken = await AsyncStorage.getItem("accessToken");
+-      const authToken = token?.token || storedToken;
++        const storedToken = await AsyncStorage.getItem("accessToken");
++        const authToken = token?.token || storedToken;
+ 
+-      if (!authToken) {
+-        setError("Please log in to view your appointments.");
+-        setBookings([]);
+-        return;
+-      }
++        if (!authToken) {
++          setError("Please log in to view your appointments.");
++          setBookings([]);
++          return;
++        }
+ 
+-      const res = await axios.get(`${API}/bookings/me`, {
+-        headers: { Authorization: `Bearer ${authToken}` },
+-      });
++        const res = await axios.get(`${API}/bookings/me`, {
++          headers: { Authorization: `Bearer ${authToken}` },
++        });
+ 
+-      const raw = res.data;
+-      const list = Array.isArray(raw)
+-        ? raw
+-        : raw?.bookings || raw?.results || [];
++        const raw = res.data;
++        const list = Array.isArray(raw)
++          ? raw
++          : raw?.bookings || raw?.results || [];
+ 
+-      setBookings(list);
+-    } catch (err) {
+-      console.log(
+-        "Error loading appointments",
+-        err.response?.data || err.message
+-      );
+-      setError("Could not load your appointments.");
+-      if (showFlash) {
+-        showFlash("error", "Could not load your appointments.");
++        setBookings(list);
++      } catch (err) {
++        console.log(
++          "Error loading appointments",
++          err.response?.data || err.message
++        );
++        setError("Could not load your appointments.");
++        if (showFlash) {
++          showFlash("error", "Could not load your appointments.");
++        }
++      } finally {
++        setLoading(false);
++        if (useRefresh) setRefreshing(false);
+       }
+-    } finally {
+-      setLoading(false);
+-    }
+-  }, [showFlash, token?.token]);
++    },
++    [showFlash, token?.token]
++  );
++
++  const handleRefresh = useCallback(() => fetchBookings(true), [fetchBookings]);
+ 
+   useFocusEffect(
+     useCallback(() => {
+       fetchBookings();
+     }, [fetchBookings])
+   );
+ 
+   const handleNavigateToBooking = (booking) => {
+     try {
+       let url = "";
+       if (
+         booking?.provider_lat != null &&
+         booking?.provider_long != null
+       ) {
+         const dest = `${booking.provider_lat},${booking.provider_long}`;
+         url =
+           Platform.OS === "ios"
+             ? `http://maps.apple.com/?daddr=${dest}`
+             : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+       } else if (booking?.provider_location) {
+         const q = encodeURIComponent(booking.provider_location);
+         url =
+           Platform.OS === "ios"
+             ? `http://maps.apple.com/?q=${q}`
+             : `https://www.google.com/maps/search/?api=1&query=${q}`;
+@@ -2123,51 +2147,56 @@ function AppointmentsScreen({ token, showFlash }) {
+ 
+             {isUpcoming && (
+               <TouchableOpacity
+                 style={styles.appointmentCancelButton}
+                 onPress={() => handleCancelBooking(booking)}
+               >
+                 <Text style={styles.appointmentCancelButtonText}>Cancel</Text>
+               </TouchableOpacity>
+             )}
+           </View>
+         </View>
+ 
+         {(booking.provider_lat != null || booking.provider_location) && (
+           <TouchableOpacity
+             style={[styles.navigateButton, styles.appointmentDirectionsButton]}
+             onPress={() => handleNavigateToBooking(booking)}
+           >
+             <Text style={styles.navigateButtonText}>Directions</Text>
+           </TouchableOpacity>
+         )}
+       </View>
+     );
+   };
+ 
+   return (
+-  <ScrollView contentContainerStyle={styles.appointmentScroll}>
++  <ScrollView
++    contentContainerStyle={styles.appointmentScroll}
++    refreshControl={
++      <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
++    }
++  >
+     <View style={styles.card}>
+       <View style={styles.appointmentHeader}>
+         <Text style={styles.profileTitle}>Appointments</Text>
+         <TouchableOpacity onPress={fetchBookings}>
+           <Text style={styles.refreshText}>Refresh</Text>
+         </TouchableOpacity>
+       </View>
+ 
+       {loading && (
+         <View style={styles.loadingRow}>
+           <ActivityIndicator />
+           <Text style={styles.serviceMeta}>Loading your appointments…</Text>
+         </View>
+       )}
+ 
+       {!loading && error ? (
+         <Text style={styles.errorText}>{error}</Text>
+       ) : null}
+ 
+       {!loading && !error && bookings.length === 0 ? (
+         <Text style={styles.serviceMeta}>
+           You don’t have any appointments yet.
+         </Text>
+       ) : null}
+     </View>
+@@ -2235,116 +2264,118 @@ function SearchScreen({
+  
+ 
+   const [filteredProviders, setFilteredProviders] = useState([]);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationError, setLocationError] = useState("");
+   const [providers, setProviders] = useState([]);
+   const [providersLoading, setProvidersLoading] = useState(true);
+   const [providersError, setProvidersError] = useState("");
+   const [selectedProvider, setSelectedProvider] = useState(null);
+   const [services, setServices] = useState([]);
+   const [servicesLoading, setServicesLoading] = useState(false);
+   const [servicesError, setServicesError] = useState("");
+   const [selectedService, setSelectedService] = useState(null);
+   const [catalogImages, setCatalogImages] = useState([]);
+   const [catalogLoading, setCatalogLoading] = useState(false);
+   const [catalogError, setCatalogError] = useState("");
+   const [availability, setAvailability] = useState([]);
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [availabilityError, setAvailabilityError] = useState("");
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
++  const [refreshing, setRefreshing] = useState(false);
+ 
+   //Radius 
+   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+     }
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
+   };
+ 
+ 
+   const handleSearchSubmit = () => {
+     // when the user hits enter/search on the keyboard
+     setHasSearched(true);
+   };
+ 
+ 
+-    // Load providers on mount
+-  useEffect(() => {
+-    const loadProviders = async () => {
+-      try {
+-        setProvidersLoading(true);
+-        setProvidersError("");
++  const loadProviders = useCallback(async () => {
++    try {
++      setProvidersLoading(true);
++      setProvidersError("");
+ 
+-        const res = await axios.get(`${API}/providers`);
++      const res = await axios.get(`${API}/providers`);
+ 
+-        // Always normalize the result to an array
+-        const list = Array.isArray(res.data)
+-          ? res.data
+-          : res.data?.providers || [];         
++      // Always normalize the result to an array
++      const list = Array.isArray(res.data)
++        ? res.data
++        : res.data?.providers || [];
+ 
+-        setProviders(list);
+-        setFilteredProviders(list);
+-        syncFavoritesFromList(list);
+-      } catch (err) {
+-        console.log(
+-          "Error loading providers",
+-          err?.response?.data || err?.message
+-        );
+-        setProvidersError("Could not load providers.");
+-        if (showFlash) showFlash("error", "Could not load providers.");
+-      } finally {
+-        setProvidersLoading(false);
+-      }
+-    };
++      setProviders(list);
++      setFilteredProviders(list);
++      syncFavoritesFromList(list);
++      return list;
++    } catch (err) {
++      console.log(
++        "Error loading providers",
++        err?.response?.data || err?.message
++      );
++      setProvidersError("Could not load providers.");
++      if (showFlash) showFlash("error", "Could not load providers.");
++      return [];
++    } finally {
++      setProvidersLoading(false);
++    }
++  }, [showFlash, syncFavoritesFromList]);
+ 
+-    // actually run it on mount
++  // Load providers on mount
++  useEffect(() => {
+     loadProviders();
+-  }, [syncFavoritesFromList]);
++  }, [loadProviders]);
+ 
+   useEffect(() => {
+     const providerFromNav = route?.params?.provider;
+     if (!providerFromNav) return;
+ 
+     const incomingId = getProviderId(providerFromNav);
+     const currentId = getProviderId(selectedProvider);
+     if (incomingId && incomingId === currentId) return;
+ 
+     setSearchQuery(providerFromNav.name || "");
+     setHasSearched(true);
+     setFilteredProviders([providerFromNav]);
+     handleSelectProvider(providerFromNav);
+   }, [route?.params?.provider, selectedProvider]);
+ 
+ 
+ 
+ //Add a useEffect that recomputes filteredProviders 
+ // whenever providers/search/radius/location changes:
+   useEffect(() => {
+     // 👇 do nothing until the user actually searches
+     if (!hasSearched) {
+       setFilteredProviders([]);
+       return;
+     }
+@@ -2430,154 +2461,182 @@ function SearchScreen({
+       const coords = {
+         lat: loc.coords.latitude,
+         long: loc.coords.longitude,
+       };
+       setClientLocation(coords);
+       setLocationError("");
+       return coords;
+     } catch (err) {
+       console.log("Error getting client location", err);
+       setLocationError("Could not get your current location.");
+       if (showFlash) {
+         showFlash("error", "Could not get your current location.");
+       }
+       return null;
+     }
+   };
+ 
+   const handleRadiusChange = async (value) => {
+     setRadiusKm(value);
+     if (value > 0 && !clientLocation) {
+       await ensureClientLocation();
+     }
+   };
+ 
+ 
+-  const loadAvailability = async (providerId, serviceId) => {
+-    try {
+-      setAvailabilityLoading(true);
+-      setAvailabilityError("");
++  const loadAvailability = useCallback(
++    async (providerId, serviceId) => {
++      try {
++        setAvailabilityLoading(true);
++        setAvailabilityError("");
+ 
+-      const res = await axios.get(
+-        `${API}/providers/${providerId}/availability`,
+-        {
+-          params: {
+-            service_id: serviceId,
+-            days: 14,
+-          },
+-        }
+-      );
++        const res = await axios.get(
++          `${API}/providers/${providerId}/availability`,
++          {
++            params: {
++              service_id: serviceId,
++              days: 14,
++            },
++          }
++        );
+ 
+-      setAvailability(res.data || []);
+-    } catch (err) {
+-      console.log(
+-        "Error loading availability",
+-        err.response?.data || err.message
+-      );
+-      setAvailabilityError("Could not load availability for this service.");
+-      if (showFlash) showFlash("error", "Could not load availability.");
+-    } finally {
+-      setAvailabilityLoading(false);
+-    }
+-  };
++        setAvailability(res.data || []);
++      } catch (err) {
++        console.log(
++          "Error loading availability",
++          err.response?.data || err.message
++        );
++        setAvailabilityError("Could not load availability for this service.");
++        if (showFlash) showFlash("error", "Could not load availability.");
++      } finally {
++        setAvailabilityLoading(false);
++      }
++    },
++    [showFlash]
++  );
+ 
+-  const loadProviderCatalog = async (providerId) => {
++  const loadProviderCatalog = useCallback(async (providerId) => {
+     try {
+       setCatalogLoading(true);
+       setCatalogError("");
+ 
+       const res = await axios.get(`${API}/providers/${providerId}/catalog`);
+ 
+       setCatalogImages(Array.isArray(res.data) ? res.data : []);
+     } catch (err) {
+       console.log(
+         "Error loading provider catalog",
+         err.response?.data || err.message
+       );
+       setCatalogError(
+         err.response?.data?.detail || "Could not load provider photos."
+       );
+     } finally {
+       setCatalogLoading(false);
+     }
+-  };
++  }, []);
+ 
+ 
+-  const handleSelectProvider = async (provider) => {
++  const handleSelectProvider = useCallback(async (provider) => {
+     setSelectedProvider(provider);
+ 
+     const providerId = getProviderId(provider);
+     if (!providerId) {
+       setServices([]);
+       setServicesError("Provider information is missing.");
+       return;
+     }
+ 
+     // Reset downstream state
+     setServices([]);
+     setServicesError("");
+     setSelectedService(null);
+     setAvailability([]);
+     setAvailabilityError("");
+     setSelectedDate(null);
+     setSelectedSlot(null);
+ 
+     // Reset and load catalog for this provider
+     setCatalogImages([]);
+     setCatalogError("");
+     loadProviderCatalog(providerId);
+ 
+     try {
+       setServicesLoading(true);
+ 
+       const res = await axios.get(
+         `${API}/providers/${providerId}/services`
+       );
+       setServices(res.data || []);
+     } catch (err) {
+       console.log(
+         "Error loading services",
+         err.response?.data || err.message
+       );
+       setServicesError("Could not load services for this provider.");
+       if (showFlash) showFlash("error", "Could not load provider services.");
+     } finally {
+       setServicesLoading(false);
+     }
+-  };
++  }, [loadProviderCatalog, showFlash]);
+ 
+-  const handleSelectService = async (service) => {
+-    setSelectedService(service);
+-    setAvailability([]);
+-    setAvailabilityError("");
+-    setSelectedDate(null);
+-    setSelectedSlot(null);
++  const handleSelectService = useCallback(
++    async (service) => {
++      setSelectedService(service);
++      setAvailability([]);
++      setAvailabilityError("");
++      setSelectedDate(null);
++      setSelectedSlot(null);
+ 
+-    if (!selectedProvider) return;
++      if (!selectedProvider) return;
+ 
+-    await loadAvailability(getProviderId(selectedProvider), service.id);
+-  };
++      await loadAvailability(getProviderId(selectedProvider), service.id);
++    },
++    [loadAvailability, selectedProvider]
++  );
++
++  const handleRefresh = useCallback(async () => {
++    setRefreshing(true);
++    const list = await loadProviders();
++
++    if (selectedProvider) {
++      const match = (list || []).find(
++        (p) => getProviderId(p) === getProviderId(selectedProvider)
++      );
++
++      if (match) {
++        await handleSelectProvider(match);
++      } else {
++        setSelectedProvider(null);
++        setServices([]);
++        setAvailability([]);
++        setCatalogImages([]);
++      }
++    }
++
++    setRefreshing(false);
++  }, [handleSelectProvider, loadProviders, selectedProvider]);
+ 
+   const handleBookAppointment = async () => {
+     if (!selectedService || !selectedSlot || !selectedProvider) return;
+ 
+     const providerId = getProviderId(selectedProvider);
+     if (!providerId) return;
+ 
+     try {
+       setBookingLoading(true);
+ 
+       const storedToken = await AsyncStorage.getItem("accessToken");
+       if (!storedToken) {
+         if (showFlash) {
+           showFlash("error", "No access token found. Please log in again.");
+         } else {
+           Alert.alert("Error", "No access token found. Please log in again.");
+         }
+         return;
+       }
+ 
+       await axios.post(
+         `${API}/bookings`,
+         {
+           service_id: selectedService.id,
+           start_time: selectedSlot,
+@@ -2644,52 +2703,60 @@ function SearchScreen({
+   const buildCalendarDays = () => {
+     const days = [];
+     const today = new Date();
+ 
+     for (let i = 0; i < 14; i++) {
+       const d = new Date(today);
+       d.setDate(today.getDate() + i);
+       const key = makeDateKey(d); // YYYY-MM-DD
+       const hasSlots = (availabilityMap[key] || []).length > 0;
+ 
+       days.push({ key, date: d, hasSlots });
+     }
+     return days;
+   };
+ 
+   const calendarDays = buildCalendarDays();
+ 
+   const formatTimeLabel = (isoString) => {
+     const d = new Date(isoString);
+     return d.toLocaleTimeString("en-US", {
+       hour: "numeric",
+       minute: "2-digit",
+     });
+   };
+ 
+-    return (      
+-              <ScrollView contentContainerStyle={styles.providerScroll}>
++    return (
++              <ScrollView
++                contentContainerStyle={styles.providerScroll}
++                refreshControl={
++                  <RefreshControl
++                    refreshing={refreshing}
++                    onRefresh={handleRefresh}
++                  />
++                }
++              >
+                 <Text style={styles.profileTitle}>Find a provider</Text>
+                 <Text style={styles.subtitleSmall}>
+                   Search by profession and distance, then pick a service and time.
+                 </Text>
+ 
+                 {/* Filters */}
+                 <View style={styles.card}>
+                   <Text style={styles.sectionTitle}>Search filters</Text>
+ 
+                   <TextInput
+                     style={styles.input}
+                     placeholder="Search by profession (e.g. Barber, Nail Tech)"
+                     value={searchQuery}
+                     onChangeText={setSearchQuery}
+                     onSubmitEditing={handleSearchSubmit}
+                   />
+ 
+                   <Text style={[styles.label, { marginTop: 8 }]}>Distance</Text>
+                   <ScrollView
+                     horizontal
+                     showsHorizontalScrollIndicator={false}
+                     style={{ marginTop: 8 }}
+                   >
+                     {radiusOptions.map((km) => {
+                       const selected = radiusKm === km;
