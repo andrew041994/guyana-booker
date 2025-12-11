@@ -116,25 +116,128 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div style={{ textAlign: 'center', marginTop: '100px' }}>
-      <h1 style={{ color: '#16a34a' }}>Guyana Booker Web</h1>
-      <input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-        style={{ display: 'block', margin: '10px auto', padding: '10px', width: '300px' }}
-      />
-      <input
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password"
-        style={{ display: 'block', margin: '10px auto', padding: '10px', width: '300px' }}
-      />
-      <button onClick={login} style={{ padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none' }}>
-        Login
-      </button>
-      <p>Use customer@guyana.com / pass</p>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.15), transparent 32%), radial-gradient(circle at 80% 0%, rgba(22, 163, 74, 0.2), transparent 38%), linear-gradient(135deg, #0b1021, #0f172a)',
+        padding: '24px',
+        color: '#e5e7eb',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '460px',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '24px',
+          boxShadow: '0 30px 80px rgba(0,0,0,0.35)',
+          backdropFilter: 'blur(8px)',
+          padding: '32px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: '-120px',
+            background: 'radial-gradient(circle, rgba(22,163,74,0.08), transparent 55%)',
+            zIndex: 0,
+          }}
+        />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '18px' }}>
+            <div
+              style={{
+                height: '96px',
+                width: '96px',
+                borderRadius: '50%',
+                background: 'linear-gradient(145deg, rgba(22,163,74,0.2), rgba(20,184,166,0.18))',
+                display: 'grid',
+                placeItems: 'center',
+                boxShadow: '0 12px 32px rgba(16,185,129,0.25)',
+              }}
+            >
+              <img src="/bookitgy-logo.png" alt="Guyana Booker" style={{ height: '60px', width: '60px', objectFit: 'contain' }} />
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <p style={{ color: '#9ca3af', letterSpacing: '0.08em', fontSize: '12px', textTransform: 'uppercase' }}>
+              Welcome back
+            </p>
+            <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#f9fafb', margin: '6px 0 8px' }}>Sign in to Guyana Booker</h1>
+            <p style={{ color: '#d1d5db', fontSize: '15px' }}>
+              Manage bookings, providers, and insights from one beautiful dashboard.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '18px' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', color: '#d1d5db', fontSize: '14px' }}>
+              Email
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@email.com"
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#f3f4f6',
+                  outline: 'none',
+                  fontSize: '15px',
+                }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', color: '#d1d5db', fontSize: '14px' }}>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#f3f4f6',
+                  outline: 'none',
+                  fontSize: '15px',
+                }}
+              />
+            </label>
+          </div>
+          <button
+            onClick={login}
+            style={{
+              width: '100%',
+              padding: '14px 18px',
+              background: 'linear-gradient(135deg, #16a34a, #10b981)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              fontWeight: 700,
+              fontSize: '16px',
+              letterSpacing: '0.02em',
+              boxShadow: '0 18px 40px rgba(16,185,129,0.3)',
+              cursor: 'pointer',
+              transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+            }}
+            onMouseDown={(e) => (e.currentTarget.style.transform = 'translateY(1px)')}
+            onMouseUp={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+          >
+            Continue
+          </button>
+          <div style={{ textAlign: 'center', marginTop: '14px', color: '#9ca3af', fontSize: '13px' }}>
+            Use <strong style={{ color: '#f9fafb' }}>customer@guyana.com</strong> with password{' '}
+            <strong style={{ color: '#f9fafb' }}>pass</strong>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
