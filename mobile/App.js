@@ -2185,7 +2185,8 @@ function AppointmentsScreen({ token, showFlash }) {
           </View>
         </View>
 
-        {(booking.provider_lat != null || booking.provider_location) && (
+        {isUpcoming &&
+          (booking.provider_lat != null || booking.provider_location) && (
           <TouchableOpacity
             style={[styles.navigateButton, styles.appointmentDirectionsButton]}
             onPress={() => handleNavigateToBooking(booking)}
