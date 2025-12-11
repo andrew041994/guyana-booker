@@ -1,5 +1,5 @@
 diff --git a/mobile/App.js b/mobile/App.js
-index 8455b941c9468f35e8eb77d3c82e5fb39826a553..dcad3ed9177f865a409a5d8408d1667d3a73a017 100644
+index 8455b941c9468f35e8eb77d3c82e5fb39826a553..de20f34a542eeddf2d89956f7d2e999d6a2025b9 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
 @@ -1,30 +1,30 @@
@@ -205,7 +205,105 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..dcad3ed9177f865a409a5d8408d1667d
  
        const payload = {
          full_name: editProfile.full_name,
-@@ -991,82 +997,86 @@ function ProfileScreen({ setToken, showFlash, token }) {
+@@ -938,144 +944,148 @@ function ProfileScreen({ setToken, showFlash, token }) {
+       );
+ 
+ 
+       // Refresh local user state so top card updates
+       setUser((prev) => ({
+         ...prev,
+         full_name: res.data.full_name,
+         phone: res.data.phone,
+         whatsapp: res.data.whatsapp,
+         location: res.data.location,
+       }));
+ 
+       if (showFlash) showFlash("success", "Profile updated");
+       setShowEdit(false);
+     } catch (err) {
+       console.log("Error saving profile", err.response?.data || err.message);
+       const detail =
+         err.response?.data?.detail || "Could not save profile changes.";
+       if (showFlash) showFlash("error", detail);
+     } finally {
+       setEditSaving(false);
+     }
+   };
+ 
+ 
++  const loadMyBookings = useCallback(async () => {
++    try {
++      setBookingsLoading(true);
++      setBookingsError("");
++
++      const token = await AsyncStorage.getItem("accessToken");
++      if (!token) {
++        setBookingsError("No access token found. Please log in again.");
++        return;
++      }
++
++      const res = await axios.get(`${API}/bookings/me`, {
++        headers: { Authorization: `Bearer ${token}` },
++      });
++
++      const rawBookings = res.data;
++      const bookingsList = Array.isArray(rawBookings)
++        ? rawBookings
++        : rawBookings?.bookings || rawBookings?.results || [];
++
++      setBookings(bookingsList);
++    } catch (err) {
++      console.log("Error loading my bookings", err.response?.data || err.message);
++      setBookingsError("Could not load your bookings.");
++      if (showFlash) showFlash("error", "Could not load your bookings.");
++    } finally {
++      setBookingsLoading(false);
++    }
++  }, [showFlash]);
++
++  const onRefresh = useCallback(async () => {
++    await loadProfile(true);
++    if (showBookings) {
++      await loadMyBookings();
++    }
++  }, [loadMyBookings, loadProfile, showBookings]);
++
++  const toggleMyBookings = async () => {
++    const next = !showBookings;
++    setShowBookings(next);
++    if (next) {
++      await loadMyBookings();
++    }
++  };
++
+   if (loading) {
+     return (
+       <View style={styles.center}>
+         <ActivityIndicator size="large" />
+         <Text style={styles.loadingText}>Loading profile…</Text>
+       </View>
+     );
+   }
+ 
+   if (error) {
+     return (
+       <View style={styles.center}>
+         <Text style={styles.errorText}>{error}</Text>
+       </View>
+     );
+   }
+ 
+   if (!user) {
+     return (
+       <View style={styles.center}>
+         <Text style={styles.errorText}>No user data.</Text>
+       </View>
+     );
+   }
+ 
+   const isAdmin = user.is_admin;
+   const isProvider = user.is_provider;
+   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
  
    const handleComingSoon = (label) => {
      if (showFlash) {
@@ -213,7 +311,8 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..dcad3ed9177f865a409a5d8408d1667d
      }
    };
  
-     const formatBookingDate = (iso) => {
+-    const formatBookingDate = (iso) => {
++  const formatBookingDate = (iso) => {
      const d = new Date(iso);
      return d.toLocaleDateString("en-US", {
        weekday: "short",
@@ -232,56 +331,46 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..dcad3ed9177f865a409a5d8408d1667d
    };
  
 -  const loadMyBookings = async () => {
-+  const loadMyBookings = useCallback(async () => {
-     try {
-       setBookingsLoading(true);
-       setBookingsError("");
- 
-       const token = await AsyncStorage.getItem("accessToken");
-       if (!token) {
-         setBookingsError("No access token found. Please log in again.");
-         return;
-       }
- 
--    const res = await axios.get(`${API}/bookings/me`, {
-+      const res = await axios.get(`${API}/bookings/me`, {
-         headers: { Authorization: `Bearer ${token}` },
-       });
- 
+-    try {
+-      setBookingsLoading(true);
+-      setBookingsError("");
 -
-       const rawBookings = res.data;
-       const bookingsList = Array.isArray(rawBookings)
-         ? rawBookings
-         : rawBookings?.bookings || rawBookings?.results || [];
- 
-       setBookings(bookingsList);
+-      const token = await AsyncStorage.getItem("accessToken");
+-      if (!token) {
+-        setBookingsError("No access token found. Please log in again.");
+-        return;
+-      }
+-
+-    const res = await axios.get(`${API}/bookings/me`, {
+-        headers: { Authorization: `Bearer ${token}` },
+-      });
+-
+-
+-      const rawBookings = res.data;
+-      const bookingsList = Array.isArray(rawBookings)
+-        ? rawBookings
+-        : rawBookings?.bookings || rawBookings?.results || [];
+-
+-      setBookings(bookingsList);
 -
 -      // setBookings(res.data || []);
-     } catch (err) {
-       console.log("Error loading my bookings", err.response?.data || err.message);
-       setBookingsError("Could not load your bookings.");
-       if (showFlash) showFlash("error", "Could not load your bookings.");
-     } finally {
-       setBookingsLoading(false);
-     }
+-    } catch (err) {
+-      console.log("Error loading my bookings", err.response?.data || err.message);
+-      setBookingsError("Could not load your bookings.");
+-      if (showFlash) showFlash("error", "Could not load your bookings.");
+-    } finally {
+-      setBookingsLoading(false);
+-    }
 -  };
-+  }, [showFlash]);
-+
-+  const onRefresh = useCallback(async () => {
-+    await loadProfile(true);
-+    if (showBookings) {
-+      await loadMyBookings();
-+    }
-+  }, [loadMyBookings, loadProfile, showBookings]);
- 
-   const toggleMyBookings = async () => {
-     const next = !showBookings;
-     setShowBookings(next);
-     if (next) {
-       await loadMyBookings();
-     }
-   };
- 
+-
+-  const toggleMyBookings = async () => {
+-    const next = !showBookings;
+-    setShowBookings(next);
+-    if (next) {
+-      await loadMyBookings();
+-    }
+-  };
+-
    const handleClientCancelBooking = (bookingId) => {
      Alert.alert(
        "Cancel booking",
@@ -298,6 +387,15 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..dcad3ed9177f865a409a5d8408d1667d
                  if (showFlash)
                    showFlash("error", "No access token found. Please log in.");
                  return;
+               }
+ 
+                   await axios.post(
+                     `${API}/bookings/${bookingId}/cancel`,
+                     {},
+                     {
+                       headers: { Authorization: `Bearer ${token}` },
+                     }
+                   );
 @@ -1130,51 +1140,56 @@ function ProfileScreen({ setToken, showFlash, token }) {
          if (showFlash) {
            showFlash(
