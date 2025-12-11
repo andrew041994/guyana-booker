@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import axios from 'axios'
 import 'os'
+import './login.css'
 
 const API = 'http://localhost:8000'
 
@@ -16,29 +17,101 @@ function App() {
 
   // Simple login for demo
   const Login = () => {
+    const [email, setEmail] = React.useState('customer@guyana.com')
+    const [password, setPassword] = React.useState('pass')
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+
     const login = async (e) => {
       e.preventDefault()
-      const form = e.target
+      setError('')
+      setLoading(true)
       try {
         const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
-          username: form.email.value,
-          password: form.password.value
+          username: email,
+          password
         }))
         localStorage.setItem('token', res.data.access_token)
         setToken(res.data.access_token)
-        alert('Logged in!')
       } catch {
-        alert('Wrong credentials – try customer@guyana.com / pass')
+        setError('Wrong credentials – try customer@guyana.com with password pass')
+      } finally {
+        setLoading(false)
       }
     }
 
     return (
-      <form onSubmit={login} className="max-w-md mx-auto mt-20 p-6 border rounded">
-        <h1 className="text-3xl mb-6 text-center">Guyana Booker</h1>
-        <input name="email" defaultValue="customer@guyana.com" className="block w-full p-2 border mb-4" placeholder="Email" />
-        <input name="password" type="password" defaultValue="pass" className="block w-full p-2 border mb-4" placeholder="Password" />
-        <button className="w-full bg-blue-600 text-white py-3">Login</button>
-      </form>
+      <div className="login-shell">
+        <div className="login-glow login-glow-one" />
+        <div className="login-glow login-glow-two" />
+        <div className="login-card">
+          <div className="login-hero">
+            <div className="logo-circle">
+              <img src="/bookitgy-logo.png" alt="BookitGY" />
+            </div>
+            <p className="eyebrow">Booking platform for Guyana</p>
+            <h1>Welcome back to Guyana Booker</h1>
+            <p className="subtitle">
+              Manage appointments, track providers, and keep customers happy from a single, secure dashboard.
+            </p>
+            <div className="hero-stats">
+              <div>
+                <span className="stat-value">4.9★</span>
+                <span className="stat-label">Average satisfaction</span>
+              </div>
+              <div>
+                <span className="stat-value">8,200+</span>
+                <span className="stat-label">Monthly bookings</span>
+              </div>
+              <div>
+                <span className="stat-value">24/7</span>
+                <span className="stat-label">Real-time monitoring</span>
+              </div>
+            </div>
+          </div>
+
+          <form className="login-form" onSubmit={login}>
+            <div className="form-header">
+              <p className="eyebrow">Sign in</p>
+              <h2>Access the admin console</h2>
+              <p className="form-hint">Use your admin credentials or the demo account below.</p>
+            </div>
+
+            <label className="form-field">
+              <span>Email</span>
+              <input
+                name="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+            </label>
+
+            <label className="form-field">
+              <span>Password</span>
+              <input
+                type="password"
+                name="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+              />
+            </label>
+
+            {error && <p className="form-error">{error}</p>}
+
+            <button className="primary-btn" disabled={loading}>
+              {loading ? 'Signing in…' : 'Continue'}
+            </button>
+
+            <p className="credentials-hint">
+              Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
+            </p>
+          </form>
+        </div>
+      </div>
     )
   }
 
