@@ -24,8 +24,14 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 
 
 
-const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
+  const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
   console.log("### API base URL =", API);
+
+  const isValidEmail = (value) => {
+  const trimmed = value.trim();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(trimmed);
+};
 
   const resolveImageUrl = (url) => {
     if (!url || typeof url !== "string") return null;
@@ -278,14 +284,22 @@ function LandingScreen({ goToLogin, goToSignup }) {
       );
     }
 
-function LoginScreen({ setToken, goToSignup, goBack, goToForgot, setIsAdmin, showFlash  }) {
-  const [email, setEmail] = useState("customer@guyana.com");
-  const [password, setPassword] = useState("pass");
+const login = async () => {
+  const trimmedEmail = email.trim();
+  const normalizedEmail = trimmedEmail.toLowerCase();
 
- const login = async () => {
+  if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+    if (showFlash) {
+      showFlash("error", "Please enter a valid email address");
+    } else {
+      Alert.alert("Error", "Please enter a valid email address");
+    }
+    return;
+  }
+
   try {
     const body = new URLSearchParams({
-      username: email,
+      username: normalizedEmail,
       password: password,
     }).toString();
 
@@ -297,27 +311,25 @@ function LoginScreen({ setToken, goToSignup, goBack, goToForgot, setIsAdmin, sho
 
     await AsyncStorage.setItem("accessToken", res.data.access_token);
 
-      
-      try {
-        const expoPushToken = await registerForPushNotificationsAsync();
-        if (expoPushToken) {
-          // Update the logged-in user's push token in /users/me
-          await axios.put(
-            `${API}/users/me`,
-            { expo_push_token: expoPushToken },
-            {
-              headers: {
-                Authorization: `Bearer ${res.data.access_token}`,
-              },
-            }
-          );
+    // Try to register push token, but don't fail login if this breaks
+    try {
+      const expoPushToken = await registerForPushNotificationsAsync();
+      if (expoPushToken) {
+        await axios.put(
+          `${API}/users/me`,
+          { expo_push_token: expoPushToken },
+          {
+            headers: {
+              Authorization: `Bearer ${res.data.access_token}`,
+            },
+          }
+        );
       }
-
     } catch (err) {
       console.log("Failed to register push token", err);
     }
 
-
+    // Successful login
     setToken({
       token: res.data.access_token,
       userId: res.data.user_id,
@@ -326,8 +338,7 @@ function LoginScreen({ setToken, goToSignup, goBack, goToForgot, setIsAdmin, sho
       isAdmin: res.data.is_admin,
     });
 
-    const emailLower = email.trim().toLowerCase();
-    setIsAdmin(emailLower === ADMIN_EMAIL.toLowerCase());
+    setIsAdmin(normalizedEmail === ADMIN_EMAIL.toLowerCase());
 
     if (showFlash) {
       showFlash("success", "Logged in successfully");
@@ -341,10 +352,8 @@ function LoginScreen({ setToken, goToSignup, goBack, goToForgot, setIsAdmin, sho
       );
     }
   }
-};
 
-
-  return (
+return (
   <KeyboardAvoidingView
     style={styles.avoider}
     behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -422,8 +431,11 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
   const [devResetLink, setDevResetLink] = useState(null);
 
   const requestReset = async () => {
-    if (!email.trim()) {
-      showFlash?.("error", "Please enter your email address");
+    const trimmedEmail = email.trim();
+    const normalizedEmail = trimmedEmail.toLowerCase();
+
+    if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+      showFlash?.("error", "Please enter a valid email address");
       return;
     }
 
@@ -431,7 +443,9 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
     setDevResetLink(null);
 
     try {
-      const res = await axios.post(`${API}/auth/forgot-password`, { email });
+      const res = await axios.post(`${API}/auth/forgot-password`, {
+        email: normalizedEmail,
+      });
       const message =
         res.data?.message ||
         "If an account exists for that email, a reset link has been sent.";
@@ -541,6 +555,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
   const signup = async () => {
     const trimmedEmail = email.trim();
+    const normalizedEmail = trimmedEmail.toLowerCase();
     const trimmedPassword = password.trim();
     const trimmedConfirm = confirmPassword.trim();
     const trimmedUsername = username.trim();
@@ -572,6 +587,15 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       return;
     }
 
+    if (!isValidEmail(trimmedEmail)) {
+      if (showFlash) {
+        showFlash("error", "Please enter a valid email address");
+      } else {
+        Alert.alert("Error", "Please enter a valid email address");
+      }
+      return;
+    }
+
     // ✅ Normalize phone into WhatsApp format: whatsapp:+...
     let whatsappValue = trimmedPhone;
 
@@ -596,7 +620,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
     try {
       await axios.post(`${API}/auth/signup`, {
-        email: trimmedEmail,
+        email: normalizedEmail,
         password: trimmedPassword,
         full_name: trimmedUsername,
         phone: trimmedPhone,          // plain phone as user entered
@@ -5323,6 +5347,7 @@ function FlashMessage({ flash }) {
   const textColor = isError ? "#7f1d1d" : "#166534";
 
   return (
+
     <View
       style={[
         styles.flashContainer,
