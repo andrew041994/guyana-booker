@@ -56,6 +56,15 @@ class LoginByEmailPayload(BaseModel):
     email: str
     password: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordPayload(BaseModel):
+    token: str
+    new_password: str
+
+
 
 class UserOut(UserBase):
     id: int

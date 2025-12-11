@@ -410,7 +410,13 @@ def update_user(
     db.refresh(user)
     return user
 
+def set_user_password(db: Session, user: models.User, new_password: str) -> models.User:
+    """Update a user's password with a freshly hashed value."""
 
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+    db.refresh(user)
+    return user
 
 # ---------------------------------------------------------------------------
 # Promotion CRUD

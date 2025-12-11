@@ -62,7 +62,51 @@ def _create_access_token(subject: str) -> str:
         algorithm=settings.JWT_ALGORITHM,
     )
 
+def _create_password_reset_token(email: str) -> str:
+    now = datetime.utcnow()
+    expire = now + timedelta(minutes=30)
 
+    payload = {
+        "sub": email,
+        "type": "password_reset",
+        "exp": expire,
+        "iat": int(now.timestamp()),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+def _decode_password_reset_token(token: str) -> str:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    if payload.get("type") != "password_reset":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token",
+        )
+
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token payload",
+        )
+
+    return email
 
 
 @router.post("/auth/login")
@@ -123,3 +167,42 @@ def login_by_email(
         "email": user.email,
         "is_provider": user.is_provider,
     }
+
+
+@router.post("/auth/forgot-password")
+def forgot_password(
+    payload: schemas.ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    user = crud.get_user_by_email(db, payload.email)
+    reset_link = None
+
+    if user:
+        token = _create_password_reset_token(user.email)
+        reset_link = f"{settings.PASSWORD_RESET_URL}?token={token}"
+        print(f"[RESET PASSWORD] Send this link to {user.email}: {reset_link}")
+
+    response = {
+        "message": "If an account exists for that email, a reset link has been sent.",
+    }
+
+    if settings.ENV == "dev":
+        response["reset_link"] = reset_link
+
+    return response
+
+
+@router.post("/auth/reset-password")
+def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(get_db)):
+    email = _decode_password_reset_token(payload.token)
+    user = crud.get_user_by_email(db, email)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    crud.set_user_password(db, user, payload.new_password)
+
+    return {"message": "Password updated successfully"}

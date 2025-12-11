@@ -97,6 +97,14 @@ class Settings:
             os.getenv("ENABLE_DEMO_SEED", "false").lower() == "true"
         )
 
+         # -----------------------------
+        # Password reset
+        # -----------------------------
+        # Used to build the reset link that gets emailed/logged.
+        self.PASSWORD_RESET_URL: str = os.getenv(
+            "PASSWORD_RESET_URL", "http://localhost:5173/reset-password"
+        )
+
         # -----------------------------
         # Cloudinary (for image uploads)
         # -----------------------------
