@@ -157,7 +157,7 @@ function App() {
           <img src="/bookitgy-logo.png" alt="BookitGY" />
         </div>
         <p className="eyebrow">Booking platform for Guyana</p>
-        <h1>Guyana Booker Admin</h1>
+        <h1>BookitGY Admin</h1>
         <p className="subtitle">
           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
         </p>
@@ -187,7 +187,7 @@ function App() {
             <img src="/bookitgy-logo.png" alt="BookitGY" />
             <div className="brand-text">
               <span className="brand-name">BookitGY</span>
-              <span className="brand-subtitle">Guyana Booker</span>
+              <span className="brand-subtitle">BookitGY</span>
             </div>
           </Link>
           <div className="nav-actions">
