@@ -1,172 +1,66 @@
 diff --git a/mobile/App.js b/mobile/App.js
-index 433a3228a5d4295ed852875baa7874df171b37da..fd37d00a5e8f5c2cda6b2500a256fdc28659edbf 100644
+index fd37d00a5e8f5c2cda6b2500a256fdc28659edbf..2234e3c7a1a0c15864a50fec2e220189c2af1fad 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -973,86 +973,57 @@ function ProfileScreen({ setToken, showFlash, token }) {
-       );
+@@ -2381,57 +2381,58 @@ function SearchScreen({
+ 
+   // Load providers on mount
+   useEffect(() => {
+     loadProviders();
+   }, [loadProviders]);
+ 
+   useEffect(() => {
+     const providerFromNav = route?.params?.provider;
+     if (!providerFromNav) return;
+ 
+     const incomingId = getProviderId(providerFromNav);
+     const currentId = getProviderId(selectedProvider);
+     if (incomingId && incomingId === currentId) return;
+ 
+     setSearchQuery(providerFromNav.name || "");
+     setHasSearched(true);
+     setFilteredProviders([providerFromNav]);
+     handleSelectProvider(providerFromNav);
+   }, [route?.params?.provider, selectedProvider]);
  
  
-       // Refresh local user state so top card updates
-       setUser((prev) => ({
-         ...prev,
-         full_name: res.data.full_name,
-         phone: res.data.phone,
-         whatsapp: res.data.whatsapp,
-         location: res.data.location,
-       }));
  
-       if (showFlash) showFlash("success", "Profile updated");
-       setShowEdit(false);
-     } catch (err) {
-       console.log("Error saving profile", err.response?.data || err.message);
-       const detail =
-         err.response?.data?.detail || "Could not save profile changes.";
-       if (showFlash) showFlash("error", detail);
-     } finally {
-       setEditSaving(false);
+ //Add a useEffect that recomputes filteredProviders 
+ // whenever providers/search/radius/location changes:
+   useEffect(() => {
+-    // 👇 do nothing until the user actually searches
+-    if (!hasSearched) {
++    // 👇 do nothing until the user actually searches or if the query is empty
++    const trimmedQuery = searchQuery.trim();
++    if (!hasSearched || !trimmedQuery) {
+       setFilteredProviders([]);
+       return;
      }
-   };
  
+-    const q = searchQuery.trim().toLowerCase();
++    const q = trimmedQuery.toLowerCase();
  
--  if (loading) {
--    return (
--      <View style={styles.center}>
--        <ActivityIndicator size="large" />
--        <Text style={styles.loadingText}>Loading profile…</Text>
--      </View>
--    );
--  }
--
--  if (error) {
--    return (
--      <View style={styles.center}>
--        <Text style={styles.errorText}>{error}</Text>
--      </View>
--    );
--  }
--
--  if (!user) {
--    return (
--      <View style={styles.center}>
--        <Text style={styles.errorText}>No user data.</Text>
--      </View>
--    );
--  }
--
--  const isAdmin = user.is_admin;
--  const isProvider = user.is_provider;
--  const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
--
-   const handleComingSoon = (label) => {
-     if (showFlash) {
-       showFlash("info", `${label} coming soon`);
-     }
-   };
+     const providerList = Array.isArray(providers) ? providers : [];
+       let list = providerList.map((p) => {
+             let distance_km = null;
+           if (clientLocation && p.lat != null && p.long != null) {
+             distance_km = haversineKm(
+               clientLocation.lat,
+               clientLocation.long,
+               p.lat,
+               p.long
+             );
+           }
+           return { ...p, distance_km };
+         });
  
--    const formatBookingDate = (iso) => {
-+  const formatBookingDate = (iso) => {
-     const d = new Date(iso);
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-     });
-   };
+     // text filter (profession/name/location)
+     if (q) {
+       list = list.filter((p) => {
+         const name = (p.name || "").toLowerCase();
+         const location = (p.location || "").toLowerCase();
+         const professions = (p.professions || []).map((pr) =>
+           (pr || "").toLowerCase()
+         );
  
-   const formatBookingTime = (iso) => {
-     const d = new Date(iso);
-     let h = d.getHours();
-     const m = d.getMinutes();
-     const suffix = h >= 12 ? "PM" : "AM";
-     h = h % 12 || 12;
-     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-   };
- 
-   const loadMyBookings = useCallback(async () => {
-     try {
-       setBookingsLoading(true);
-       setBookingsError("");
- 
-       const token = await AsyncStorage.getItem("accessToken");
-       if (!token) {
-         setBookingsError("No access token found. Please log in again.");
-@@ -1063,50 +1034,79 @@ function ProfileScreen({ setToken, showFlash, token }) {
-         headers: { Authorization: `Bearer ${token}` },
-       });
- 
-       const rawBookings = res.data;
-       const bookingsList = Array.isArray(rawBookings)
-         ? rawBookings
-         : rawBookings?.bookings || rawBookings?.results || [];
- 
-       setBookings(bookingsList);
-     } catch (err) {
-       console.log("Error loading my bookings", err.response?.data || err.message);
-       setBookingsError("Could not load your bookings.");
-       if (showFlash) showFlash("error", "Could not load your bookings.");
-     } finally {
-       setBookingsLoading(false);
-     }
-   }, [showFlash]);
- 
-   const onRefresh = useCallback(async () => {
-     await loadProfile(true);
-     if (showBookings) {
-       await loadMyBookings();
-     }
-   }, [loadMyBookings, loadProfile, showBookings]);
- 
-+  if (loading) {
-+    return (
-+      <View style={styles.center}>
-+        <ActivityIndicator size="large" />
-+        <Text style={styles.loadingText}>Loading profile…</Text>
-+      </View>
-+    );
-+  }
-+
-+  if (error) {
-+    return (
-+      <View style={styles.center}>
-+        <Text style={styles.errorText}>{error}</Text>
-+      </View>
-+    );
-+  }
-+
-+  if (!user) {
-+    return (
-+      <View style={styles.center}>
-+        <Text style={styles.errorText}>No user data.</Text>
-+      </View>
-+    );
-+  }
-+
-+  const isAdmin = user.is_admin;
-+  const isProvider = user.is_provider;
-+  const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-+
-   const toggleMyBookings = async () => {
-     const next = !showBookings;
-     setShowBookings(next);
-     if (next) {
-       await loadMyBookings();
-     }
-   };
- 
-   const handleClientCancelBooking = (bookingId) => {
-     Alert.alert(
-       "Cancel booking",
-       "Are you sure you want to cancel this booking?",
-       [
-         { text: "No", style: "cancel" },
-         {
-           text: "Yes, cancel",
-           style: "destructive",
-           onPress: async () => {
-             try {
-               const token = await AsyncStorage.getItem("accessToken");
-               if (!token) {
-                 if (showFlash)
-                   showFlash("error", "No access token found. Please log in.");
-                 return;
-               }
+         return (

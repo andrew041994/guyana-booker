@@ -2403,13 +2403,14 @@ function SearchScreen({
 //Add a useEffect that recomputes filteredProviders 
 // whenever providers/search/radius/location changes:
   useEffect(() => {
-    // 👇 do nothing until the user actually searches
-    if (!hasSearched) {
+    // 👇 do nothing until the user actually searches or if the query is empty
+    const trimmedQuery = searchQuery.trim();
+    if (!hasSearched || !trimmedQuery) {
       setFilteredProviders([]);
       return;
     }
 
-    const q = searchQuery.trim().toLowerCase();
+    const q = trimmedQuery.toLowerCase();
 
     const providerList = Array.isArray(providers) ? providers : [];
       let list = providerList.map((p) => {
