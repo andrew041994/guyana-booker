@@ -1,57 +1,72 @@
-diff --git a/backend/app/routes/bookings.py b/backend/app/routes/bookings.py
-index d5246eb2256e5fc1e9b4d2183fb7c889941950e0..59b44143055d1fb333683872bb2113095e49adac 100644
---- a/backend/app/routes/bookings.py
-+++ b/backend/app/routes/bookings.py
-@@ -23,50 +23,52 @@ def _require_current_provider(
-             status_code=403, detail="Only providers can access this endpoint",
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 28f8b19e7cce8ed06e82e8d283b0e2dadf2ee63a..97c03b6ac409449480ad7350404f8387325202e2 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -1135,64 +1135,66 @@ def get_provider_availability(
+             for b in bookings:
+                 if overlaps(slot_start, slot_end, b):
+                     conflict = True
+                     break
+ 
+             if not conflict:
+                 slots_for_day.append(slot_start)
+ 
+             # Step forward by the service duration (so slots line up)
+             slot_start += slot_duration
+ 
+         if slots_for_day:
+             availability.append(
+                 {
+                     "date": day_date,
+                     "slots": slots_for_day,
+                 }
+             )
+ 
+     return availability
+ 
+ 
+ 
+ def list_todays_bookings_for_provider(db: Session, provider_id: int):
+     """
+-    All *confirmed* bookings for this provider whose start_time is today.
++    All *confirmed* bookings for this provider whose start_time is today
++    and that have not finished yet.
+     """
+     now = now_local_naive()   # ⬅ Guyana local date for “today”
+     start_of_day = datetime(now.year, now.month, now.day)
+     end_of_day = start_of_day + timedelta(days=1)
+ 
+     q = (
+         db.query(models.Booking, models.Service, models.User)
+         .join(models.Service, models.Booking.service_id == models.Service.id)
+         .join(models.User, models.Booking.customer_id == models.User.id)
+         .filter(
+             models.Service.provider_id == provider_id,
+             models.Booking.start_time >= start_of_day,
+             models.Booking.start_time < end_of_day,
++            models.Booking.end_time > now,
+             models.Booking.status == "confirmed",
          )
+         .order_by(models.Booking.start_time)
+     )
  
-     provider = crud.get_provider_by_user_id(db, current_user.id)
-     if not provider:
-         raise HTTPException(
-             status_code=403,
-             detail=(
-                 "You do not have an active provider profile. Contact support or an admin."
-             ),
+     results = []
+     for booking, service, customer in q.all():
+         results.append(
+             schemas.BookingWithDetails(
+                 id=booking.id,
+                 start_time=booking.start_time,
+                 end_time=booking.end_time,
+                 status=booking.status,
+                 service_name=service.name,
+                 service_duration_minutes=service.duration_minutes,
+                 service_price_gyd=service.price_gyd or 0.0,
+                 customer_name=customer.full_name or "",
+                 customer_phone=customer.phone or "",
+             )
          )
- 
-     return provider
- 
- 
- @router.post("/bookings")
- def create_booking_for_me(
-     booking_in: schemas.BookingCreate,
-     db: Session = Depends(get_db),
-     current_user: models.User = Depends(get_current_user_from_header),
- ):
-     try:
-         booking = crud.create_booking(
-             db, customer_id=current_user.id, booking=booking_in
-         )
-+        if not booking:
-+            raise ValueError("Could not create booking")
-     except ValueError as e:
-         # bad time, slot already taken, etc.
-         raise HTTPException(status_code=400, detail=str(e))
- 
-     return booking
+     return results
  
  
- @router.get("/bookings/me")
- def list_my_bookings(
-     db: Session = Depends(get_db),
-     current_user: models.User = Depends(get_current_user_from_header),
- ):
-     return crud.list_bookings_for_customer(db, current_user.id)
- 
- 
- @router.get("/providers/me/bookings")
- def list_provider_bookings(
-     db: Session = Depends(get_db),
-      provider: models.Provider = Depends(_require_current_provider),
- ):
-     return crud.list_bookings_for_provider(db, provider.id)
- 
- 
- @router.post("/providers/me/bookings/{booking_id}/confirm")
- def confirm_booking_as_provider(
+ def list_upcoming_bookings_for_provider(
+     db: Session,
