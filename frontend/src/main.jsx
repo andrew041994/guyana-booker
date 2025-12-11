@@ -314,17 +314,32 @@ const distanceBetween = (coordA, coordB) => {
 
   return (
     <BrowserRouter>
-      <nav className="bg-blue-800 text-white p-6">
-        <div className="max-w-6xl mx-auto flex justify-between">
-           <Link to="/" className="flex items-center gap-3">
-            <img
-              src="/bookitgy-logo.png"   // or .png / .jpg
-              alt="BookitGY"
-              className="h-9 w-auto"
-            />
-            {/* keep text only for accessibility, not visually */}
+      <nav className="app-nav">
+        <div className="nav-inner">
+          <Link to="/" className="nav-brand" aria-label="BookitGY home">
+            <img src="/bookitgy-logo.png" alt="BookitGY" />
+            <div className="brand-text">
+              <span className="brand-name">BookitGY</span>
+              <span className="brand-subtitle">Guyana Booker</span>
+            </div>
           </Link>
-          {token ? <button onClick={() => { localStorage.removeItem('token'); setToken('') }} className="bg-red-600 px-6 py-2 rounded">Logout</button> : <Link to="/login">Login</Link>}
+          <div className="nav-actions">
+            {token ? (
+              <button
+                className="nav-button danger"
+                onClick={() => {
+                  localStorage.removeItem('token')
+                  setToken('')
+                }}
+              >
+                Logout
+              </button>
+            ) : (
+              <Link className="nav-button" to="/login">
+                Login
+              </Link>
+            )}
+          </div>
         </div>
       </nav>
       <Routes>

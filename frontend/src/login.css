@@ -8,10 +8,101 @@
   --accent-2: #10b981;
   --error: #f87171;
   --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  --nav-height: 76px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.app-nav {
+  height: var(--nav-height);
+  background: linear-gradient(135deg, #0c1c3d, #0f274f);
+  color: #f9fafb;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nav-inner {
+  max-width: 1180px;
+  width: 100%;
+  padding: 0 22px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.nav-brand img {
+  height: 44px;
+  width: auto;
+  display: block;
+}
+
+.brand-text {
+  display: grid;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.brand-name {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.brand-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-button {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f9fafb;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.nav-button:hover {
+  border-color: rgba(22, 163, 74, 0.6);
+  box-shadow: 0 10px 28px rgba(22, 163, 74, 0.25);
+}
+
+.nav-button.danger {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .login-shell {
-  min-height: calc(100vh - 96px);
+  min-height: calc(100vh - var(--nav-height));
   background: radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.15), transparent 32%),
     radial-gradient(circle at 80% 0%, rgba(22, 163, 74, 0.2), transparent 38%),
     linear-gradient(135deg, #060816, #0b1224);

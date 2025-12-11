@@ -1,82 +1,79 @@
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 1e901dafb8105c97415be482c574ebbaa419544c..d798e2d1e7d64ac99305dadac899d41490105adc 100644
+index d798e2d1e7d64ac99305dadac899d41490105adc..e49aacf4a2883b756ccb925b7a030764740e420b 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -1,60 +1,76 @@
- import React from 'react'
- import ReactDOM from 'react-dom/client'
--import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
-+import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
- import axios from 'axios'
- import 'os'
- import './login.css'
- 
- const API = 'http://localhost:8000'
- 
- 
- 
- 
- 
- function App() {
-   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
-   const [user, setUser] = React.useState(null)
- 
-+  React.useEffect(() => {
-+    if (token) {
-+      axios.defaults.headers.common.Authorization = `Bearer ${token}`
-+    } else {
-+      delete axios.defaults.headers.common.Authorization
-+    }
-+  }, [token])
-+
-   // Simple login for demo
-   const Login = () => {
-     const [email, setEmail] = React.useState('customer@guyana.com')
-     const [password, setPassword] = React.useState('pass')
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-+    const navigate = useNavigate()
-+
-+    React.useEffect(() => {
-+      if (token) {
-+        navigate('/admin/promotions', { replace: true })
-+      }
-+    }, [token, navigate])
- 
-     const login = async (e) => {
-       e.preventDefault()
-       setError('')
-       setLoading(true)
-       try {
-         const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
-           username: email,
-           password
-         }))
-         localStorage.setItem('token', res.data.access_token)
-         setToken(res.data.access_token)
-+        navigate('/admin/promotions', { replace: true })
-       } catch {
-         setError('Wrong credentials – try customer@guyana.com with password pass')
-       } finally {
-         setLoading(false)
-       }
-     }
- 
-     return (
-       <div className="login-shell">
-         <div className="login-glow login-glow-one" />
-         <div className="login-glow login-glow-two" />
-         <div className="login-card">
-           <div className="login-hero">
-             <div className="logo-circle">
-               <img src="/bookitgy-logo.png" alt="BookitGY" />
+@@ -292,48 +292,63 @@ const distanceBetween = (coordA, coordB) => {
+                   <div className="flex items-center justify-between mb-2">
+                     <h3 className="text-xl font-semibold">{provider.name}</h3>
+                     <span className="text-sm bg-green-100 text-green-800 px-3 py-1 rounded-full">
+                       {provider.distanceKm.toFixed(1)} km away
+                     </span>
+                   </div>
+                   <p className="text-gray-700 mb-3">{provider.location || 'Location not provided'}</p>
+                   {provider.professions?.length ? (
+                     <p className="text-gray-600 mb-4">{provider.professions.join(' • ')}</p>
+                   ) : (
+                     <p className="text-gray-500 mb-4">Profession details coming soon.</p>
+                   )}
+                   <p className="text-gray-600 text-sm">{provider.bio || 'No bio yet.'}</p>
+                 </div>
+               ))}
              </div>
-             <p className="eyebrow">Booking platform for Guyana</p>
-             <h1>Welcome back to Guyana Booker</h1>
-             <p className="subtitle">
-               Manage appointments, track providers, and keep customers happy from a single, secure dashboard.
-             </p>
-             <div className="hero-stats">
-               <div>
-                 <span className="stat-value">4.9★</span>
-                 <span className="stat-label">Average satisfaction</span>
+           )}
+         </div>
+       </div>
+     )
+   }
+ 
+ 
+   return (
+     <BrowserRouter>
+-      <nav className="bg-blue-800 text-white p-6">
+-        <div className="max-w-6xl mx-auto flex justify-between">
+-           <Link to="/" className="flex items-center gap-3">
+-            <img
+-              src="/bookitgy-logo.png"   // or .png / .jpg
+-              alt="BookitGY"
+-              className="h-9 w-auto"
+-            />
+-            {/* keep text only for accessibility, not visually */}
++      <nav className="app-nav">
++        <div className="nav-inner">
++          <Link to="/" className="nav-brand" aria-label="BookitGY home">
++            <img src="/bookitgy-logo.png" alt="BookitGY" />
++            <div className="brand-text">
++              <span className="brand-name">BookitGY</span>
++              <span className="brand-subtitle">Guyana Booker</span>
++            </div>
+           </Link>
+-          {token ? <button onClick={() => { localStorage.removeItem('token'); setToken('') }} className="bg-red-600 px-6 py-2 rounded">Logout</button> : <Link to="/login">Login</Link>}
++          <div className="nav-actions">
++            {token ? (
++              <button
++                className="nav-button danger"
++                onClick={() => {
++                  localStorage.removeItem('token')
++                  setToken('')
++                }}
++              >
++                Logout
++              </button>
++            ) : (
++              <Link className="nav-button" to="/login">
++                Login
++              </Link>
++            )}
++          </div>
+         </div>
+       </nav>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login />} />
+         <Route path="/admin/promotions" element={token ? <AdminPromotions /> : <Login />} />
+       </Routes>
+     </BrowserRouter>
+   )
+ }
+ 
+ ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+\ No newline at end of file
