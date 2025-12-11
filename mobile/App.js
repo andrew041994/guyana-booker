@@ -995,42 +995,13 @@ function ProfileScreen({ setToken, showFlash, token }) {
   };
 
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading profile…</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    );
-  }
-
-  if (!user) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>No user data.</Text>
-      </View>
-    );
-  }
-
-  const isAdmin = user.is_admin;
-  const isProvider = user.is_provider;
-  const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-
   const handleComingSoon = (label) => {
     if (showFlash) {
       showFlash("info", `${label} coming soon`);
     }
   };
 
-    const formatBookingDate = (iso) => {
+  const formatBookingDate = (iso) => {
     const d = new Date(iso);
     return d.toLocaleDateString("en-US", {
       weekday: "short",
@@ -1084,6 +1055,35 @@ function ProfileScreen({ setToken, showFlash, token }) {
       await loadMyBookings();
     }
   }, [loadMyBookings, loadProfile, showBookings]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.loadingText}>Loading profile…</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>No user data.</Text>
+      </View>
+    );
+  }
+
+  const isAdmin = user.is_admin;
+  const isProvider = user.is_provider;
+  const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
 
   const toggleMyBookings = async () => {
     const next = !showBookings;
