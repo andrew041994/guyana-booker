@@ -148,7 +148,7 @@ const distanceBetween = (coordA, coordB) => {
     return (
       <div className="text-center mt-20 px-4">
         <h1 className="text-6xl font-bold text-green-600 mb-4">Guyana Booker is LIVE!</h1>
-        <p className="text-xl mb-12">Booksy-style booking app for Guyana</p>
+        <p className="text-xl mb-12">booking app for Guyana</p>
         {token && (
           <Link
             to="/admin/promotions"
