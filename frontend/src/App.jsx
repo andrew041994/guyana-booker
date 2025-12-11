@@ -363,9 +363,23 @@ function useLeafletMap(providers) {
 }
 
 function AdminDashboard() {
+  const billingCycleStart = useMemo(() => {
+    const today = new Date();
+    return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  }, []);
+
   const [serviceCharge, setServiceCharge] = useState(10);
   const [providers, setProviders] = useState(sampleProviders);
-  const [charges, setCharges] = useState(sampleCharges);
+  const [charges, setCharges] = useState(() =>
+    sampleCharges.map((charge) =>
+      charge.month === billingCycleStart
+        ? {
+            ...charge,
+            isPaid: false,
+          }
+        : charge,
+    ),
+  );
   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
   const [creditInputs, setCreditInputs] = useState({});
   const [loadingProviders, setLoadingProviders] = useState(false);
@@ -482,9 +496,22 @@ function AdminDashboard() {
     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
   };
 
+  const toggleAllChargesSelection = () => {
+    if (selectedChargeIds.length === charges.length) {
+      setSelectedChargeIds([]);
+    } else {
+      setSelectedChargeIds(charges.map((c) => c.id));
+    }
+  };
+
   const setChargesPaidState = (paidState) => {
     setCharges((prev) => prev.map((c) => (selectedChargeIds.includes(c.id) ? { ...c, isPaid: paidState } : c)));
     setSelectedChargeIds([]);
+  };
+
+  const updateSingleChargeStatus = (chargeId, paidState) => {
+    setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
+    setSelectedChargeIds((prev) => prev.filter((id) => id !== chargeId));
   };
 
   const resolvedCharges = charges.map((charge) => ({
@@ -528,15 +555,23 @@ function AdminDashboard() {
                   onChange={(e) => setServiceCharge(Number(e.target.value))}
                   style={{ padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
                 />
-                <span style={{ color: '#9ca3af' }}>% of service cost (default 10%)</span>
+                <span style={{ color: '#9ca3af' }}>
+                  % of service cost (default 10%). Current billing cycle starts {billingCycleStart}.
+                </span>
               </div>
             </div>
-            <div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 style={{ padding: '10px 14px', background: '#16a34a', color: 'white', borderRadius: '10px', border: 'none', fontWeight: 700 }}
                 onClick={() => alert(`Service charge updated to ${serviceCharge}%`)}
               >
                 Save Changes
+              </button>
+              <button
+                style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', borderRadius: '10px', border: '1px solid #e5e7eb', fontWeight: 700 }}
+                onClick={() => setServiceCharge(10)}
+              >
+                Reset to 10%
               </button>
             </div>
           </div>
@@ -556,11 +591,17 @@ function AdminDashboard() {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
             <thead>
               <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
-                <th style={{ padding: '10px' }}>Select</th>
+                <th style={{ padding: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input type="checkbox" checked={selectedChargeIds.length === charges.length} onChange={toggleAllChargesSelection} />
+                    <span>Select</span>
+                  </div>
+                </th>
                 <th style={{ padding: '10px' }}>Provider</th>
                 <th style={{ padding: '10px' }}>Month</th>
                 <th style={{ padding: '10px' }}>Amount (GYD)</th>
                 <th style={{ padding: '10px' }}>Status</th>
+                <th style={{ padding: '10px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -577,23 +618,41 @@ function AdminDashboard() {
                   <td style={{ padding: '10px' }}>{charge.month}</td>
                   <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
                   <td style={{ padding: '10px' }}>
-                    <span style={{
-                      padding: '4px 8px',
-                      borderRadius: '999px',
-                      background: charge.isPaid ? '#dcfce7' : '#fef9c3',
-                      color: charge.isPaid ? '#15803d' : '#92400e',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                    }}>
+                    <span
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '999px',
+                        background: charge.isPaid ? '#dcfce7' : '#fef9c3',
+                        color: charge.isPaid ? '#15803d' : '#92400e',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                      }}
+                    >
                       {charge.isPaid ? 'Paid' : 'Unpaid'}
                     </span>
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => updateSingleChargeStatus(charge.id, true)}
+                        style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
+                      >
+                        Mark Paid
+                      </button>
+                      <button
+                        onClick={() => updateSingleChargeStatus(charge.id, false)}
+                        style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
+                      >
+                        Mark Unpaid
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+        <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             onClick={() => setChargesPaidState(true)}
             style={{ padding: '10px 14px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
@@ -606,6 +665,9 @@ function AdminDashboard() {
           >
             Mark Unpaid
           </button>
+          <div style={{ color: '#6b7280', fontSize: '14px' }}>
+            Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}).
+          </div>
         </div>
       </ReportSection>
 
