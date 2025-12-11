@@ -278,7 +278,7 @@ function LandingScreen({ goToLogin, goToSignup }) {
       );
     }
 
-function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
+function LoginScreen({ setToken, goToSignup, goBack, goToForgot, setIsAdmin, showFlash  }) {
   const [email, setEmail] = useState("customer@guyana.com");
   const [password, setPassword] = useState("pass");
 
@@ -385,6 +385,14 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
             <Button title="Login" onPress={login} color="#16a34a" />
           </View>
 
+            {goToForgot && (
+            <TouchableOpacity onPress={goToForgot} style={{ marginBottom: 6 }}>
+              <Text style={{ color: "#0f172a", textDecorationLine: "underline" }}>
+                Forgot password?
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {goToSignup && (
             <View style={{ width: "100%", marginBottom: 10 }}>
               <Button
@@ -406,6 +414,118 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
   </KeyboardAvoidingView>
 );
 
+}
+
+function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [devResetLink, setDevResetLink] = useState(null);
+
+  const requestReset = async () => {
+    if (!email.trim()) {
+      showFlash?.("error", "Please enter your email address");
+      return;
+    }
+
+    setSubmitting(true);
+    setDevResetLink(null);
+
+    try {
+      const res = await axios.post(`${API}/auth/forgot-password`, { email });
+      const message =
+        res.data?.message ||
+        "If an account exists for that email, a reset link has been sent.";
+
+      showFlash?.("success", message);
+
+      if (res.data?.reset_link) {
+        setDevResetLink(res.data.reset_link);
+      }
+    } catch (err) {
+      console.log("Forgot password error", err?.response?.data || err?.message);
+      showFlash?.("error", "Unable to send reset email. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.avoider}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            <View style={styles.logoWrapper}>
+              <Image source={BookitGYLogoTransparent} style={styles.logo} />
+            </View>
+
+            <Text style={styles.title}>Forgot password</Text>
+            <Text style={styles.subtitle}>
+              Enter your account email. We'll send a link to reset your password.
+            </Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <View style={{ width: "100%", marginBottom: 10 }}>
+              <Button
+                title={submitting ? "Sending..." : "Send reset link"}
+                onPress={requestReset}
+                color="#16a34a"
+                disabled={submitting}
+              />
+            </View>
+
+            {devResetLink && (
+              <View style={{ width: "100%", marginBottom: 10 }}>
+                <Text style={{ color: "#0f172a", marginBottom: 6 }}>
+                  Dev reset link (only visible in dev):
+                </Text>
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(devResetLink)}
+                  style={{ paddingVertical: 10 }}
+                >
+                  <Text
+                    style={{
+                      color: "#2563eb",
+                      textDecorationLine: "underline",
+                    }}
+                  >
+                    {devResetLink}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {goToLogin && (
+              <View style={{ width: "100%", marginBottom: 10 }}>
+                <Button
+                  title="Back to Login"
+                  onPress={goToLogin}
+                  color="#166534"
+                />
+              </View>
+            )}
+
+            {goBack && (
+              <View style={{ width: "100%" }}>
+                <Button title="Back" onPress={goBack} color="#6b7280" />
+              </View>
+            )}
+          </View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 }
 
 
@@ -5217,10 +5337,11 @@ function FlashMessage({ flash }) {
 }
 
 
-// 🔹 App orchestrates landing/login/signup vs main app
+// 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+
 function App() {
   const [token, setToken] = useState(null);
-  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup'
+  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [flash, setFlash] = useState(null);
@@ -5251,6 +5372,7 @@ function App() {
                 setToken={setToken}
                 setIsAdmin={setIsAdmin}
                 goToSignup={() => setAuthMode("signup")}
+                goToForgot={() => setAuthMode("forgot")}
                 goBack={() => setAuthMode("landing")}
                 showFlash={showFlash}
               />
@@ -5258,6 +5380,13 @@ function App() {
 
             {authMode === "signup" && (
               <SignupScreen
+                goToLogin={() => setAuthMode("login")}
+                goBack={() => setAuthMode("landing")}
+                showFlash={showFlash}
+              />
+            )}
+            {authMode === "forgot" && (
+              <ForgotPasswordScreen
                 goToLogin={() => setAuthMode("login")}
                 goBack={() => setAuthMode("landing")}
                 showFlash={showFlash}
