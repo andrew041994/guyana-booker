@@ -49,7 +49,6 @@ class ProviderUpdate(BaseModel):
 class UserCreate(UserBase):
     password: str
     is_provider: bool = False
-    is_admin: bool = False   # 👈 add this
 
 
 class LoginByEmailPayload(BaseModel):
