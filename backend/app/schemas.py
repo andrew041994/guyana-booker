@@ -150,6 +150,20 @@ class BillCreditOut(BaseModel):
     total_credit_balance_gyd: float
 
 
+class ProviderBillingRow(BaseModel):
+    provider_id: int
+    name: str
+    account_number: str
+    phone: Optional[str] = None
+    amount_due_gyd: float
+    is_paid: bool
+    last_due_date: Optional[datetime] = None
+
+
+class BillingStatusUpdate(BaseModel):
+    is_paid: bool
+
+
 class ProviderProfileOut(BaseModel):
     full_name: str
     phone: str

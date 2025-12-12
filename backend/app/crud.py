@@ -727,6 +727,62 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     return float(net_due)
 
 
+def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
+    amount_due = get_provider_fees_due(db, provider.id)
+    latest_bill = (
+        db.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id)
+        .order_by(models.Bill.due_date.desc())
+        .first()
+    )
+
+    return {
+        "provider_id": provider.id,
+        "name": user.full_name or "",
+        "account_number": provider.account_number or "",
+        "phone": user.phone or "",
+        "amount_due_gyd": float(amount_due or 0.0),
+        "is_paid": amount_due <= 0,
+        "last_due_date": latest_bill.due_date if latest_bill else None,
+    }
+
+
+def list_provider_billing_rows(db: Session):
+    rows = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .all()
+    )
+
+    return [_provider_billing_row(db, provider, user) for provider, user in rows]
+
+
+def get_provider_billing_row(db: Session, provider_id: int):
+    row = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+
+    if not row:
+        return None
+
+    provider, user = row
+    return _provider_billing_row(db, provider, user)
+
+
+def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:
+    updated = (
+        db.query(models.Bill)
+        .filter(models.Bill.provider_id == provider_id)
+        .update({models.Bill.is_paid: is_paid}, synchronize_session=False)
+    )
+
+    db.commit()
+    return updated
+
+
 def list_bookings_for_provider(db: Session, provider_id: int):
     """Return upcoming bookings for this provider (from now onwards)."""
     now = datetime.utcnow()

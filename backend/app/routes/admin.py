@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -61,3 +63,39 @@ def apply_bill_credit(
         "credit_applied_gyd": float(credit.amount_gyd or 0.0),
         "total_credit_balance_gyd": float(balance or 0.0),
     }
+
+
+@router.get("/billing", response_model=List[schemas.ProviderBillingRow])
+def list_provider_billing(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    return crud.list_provider_billing_rows(db)
+
+
+@router.put(
+    "/billing/{provider_id}/status",
+    response_model=schemas.ProviderBillingRow,
+)
+def update_provider_billing_status(
+    provider_id: int,
+    payload: schemas.BillingStatusUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    crud.set_provider_bills_paid_state(db, provider_id, payload.is_paid)
+    summary = crud.get_provider_billing_row(db, provider_id)
+
+    if not summary:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    return summary

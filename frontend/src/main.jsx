@@ -314,20 +314,83 @@ function App() {
   }
 
   const AdminBilling = () => {
-    const [charges, setCharges] = React.useState([
-      { id: 1, provider: 'Ariana De Freitas', month: 'Oct 2024', amount: 26000, isPaid: false },
-      { id: 2, provider: 'Jamall Adams', month: 'Oct 2024', amount: 9000, isPaid: false },
-      { id: 3, provider: 'Kittisha Jones', month: 'Oct 2024', amount: 22000, isPaid: true },
-      { id: 4, provider: 'Linden Collective', month: 'Oct 2024', amount: 12000, isPaid: true },
-    ])
+    const [billingRows, setBillingRows] = React.useState([])
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+    const [searchTerm, setSearchTerm] = React.useState('')
+    const [bulkUpdating, setBulkUpdating] = React.useState(false)
 
-    const togglePaid = (chargeId, nextState) => {
-      setCharges((prev) => prev.map((charge) => (charge.id === chargeId ? { ...charge, isPaid: nextState } : charge)))
+    const fetchBillingRows = React.useCallback(async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const res = await axios.get(`${API}/admin/billing`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        setBillingRows(res.data)
+      } catch (err) {
+        console.error(err)
+        setError('Unable to load provider billing details right now.')
+      } finally {
+        setLoading(false)
+      }
+    }, [token])
+
+    React.useEffect(() => {
+      fetchBillingRows()
+    }, [fetchBillingRows])
+
+    const updateProviderStatus = async (providerId, isPaid) => {
+      try {
+        const res = await axios.put(
+          `${API}/admin/billing/${providerId}/status`,
+          { is_paid: isPaid },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        setBillingRows((prev) =>
+          prev.map((row) => (row.provider_id === providerId ? res.data : row))
+        )
+      } catch (err) {
+        console.error(err)
+        setError('Failed to update provider billing status.')
+      }
     }
 
-    const markSelected = (paidState) => {
-      setCharges((prev) => prev.map((charge) => ({ ...charge, isPaid: paidState })))
+    const markAll = async (isPaid) => {
+      if (!billingRows.length) return
+      setBulkUpdating(true)
+      setError('')
+      try {
+        const responses = await Promise.all(
+          billingRows.map((row) =>
+            axios.put(
+              `${API}/admin/billing/${row.provider_id}/status`,
+              { is_paid: isPaid },
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+          )
+        )
+
+        const nextRows = responses.map((res) => res.data)
+        setBillingRows((prev) => {
+          const mapped = new Map(nextRows.map((row) => [row.provider_id, row]))
+          return prev.map((row) => mapped.get(row.provider_id) || row)
+        })
+      } catch (err) {
+        console.error(err)
+        setError('Failed to update all provider statuses.')
+      } finally {
+        setBulkUpdating(false)
+      }
     }
+
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    const filteredRows = billingRows.filter((row) => {
+      if (!normalizedSearch) return true
+      const accountNumber = (row.account_number || '').toLowerCase()
+      const phone = (row.phone || '').toLowerCase()
+      return accountNumber.includes(normalizedSearch) || phone.includes(normalizedSearch)
+    })
 
     return (
       <div className="admin-page">
@@ -335,40 +398,66 @@ function App() {
           <div>
             <p className="eyebrow">Billing</p>
             <h1>Provider Billing</h1>
-            <p className="header-subtitle">Monitor outstanding balances and mark charges as paid.</p>
+            <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
           </div>
           <div className="button-row">
-            <button className="ghost-btn" onClick={() => markSelected(false)}>Mark all unpaid</button>
-            <button className="primary-btn" onClick={() => markSelected(true)}>Mark all paid</button>
+            <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
+            <button className="primary-btn" onClick={() => markAll(true)} disabled={bulkUpdating || loading}>Mark all paid</button>
           </div>
         </div>
 
         <div className="admin-card">
+          <div className="billing-toolbar">
+            <div className="billing-search">
+              <label htmlFor="billing-search-input">Filter by account or phone</label>
+              <input
+                id="billing-search-input"
+                type="search"
+                placeholder="e.g. ACC-1234 or +592..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {loading && <span className="muted">Loading providers…</span>}
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+
           <div className="billing-table">
             <div className="billing-table__head">
-              <span>Provider</span>
-              <span>Month</span>
-              <span>Amount (GYD)</span>
+              <span>Name</span>
+              <span>Account number</span>
+              <span>Phone number</span>
+              <span>Amount due (platform fees)</span>
               <span>Status</span>
               <span className="sr-only">Actions</span>
             </div>
-            {charges.map((charge) => (
-              <div key={charge.id} className="billing-table__row">
+            {filteredRows.map((row) => (
+              <div key={row.provider_id} className="billing-table__row">
                 <div>
-                  <p className="billing-provider">{charge.provider}</p>
-                  <p className="muted">Invoice #{charge.id}</p>
+                  <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
+                  <p className="muted">ID #{row.provider_id}</p>
                 </div>
-                <span>{charge.month}</span>
-                <strong>{charge.amount.toLocaleString()}</strong>
-                <span className={charge.isPaid ? 'status-pill paid' : 'status-pill unpaid'}>
-                  {charge.isPaid ? 'Paid' : 'Unpaid'}
+                <strong>{row.account_number || 'N/A'}</strong>
+                <span>{row.phone || 'No phone added'}</span>
+                <strong>{Number(row.amount_due_gyd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} GYD</strong>
+                <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
+                  {row.is_paid ? 'Paid' : 'Unpaid'}
                 </span>
                 <div className="billing-actions">
-                  <button className="ghost-btn" onClick={() => togglePaid(charge.id, false)}>Unpaid</button>
-                  <button className="primary-btn" onClick={() => togglePaid(charge.id, true)}>Paid</button>
+                  <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
+                    Unpaid
+                  </button>
+                  <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
+                    Paid
+                  </button>
                 </div>
               </div>
             ))}
+
+            {!loading && filteredRows.length === 0 && (
+              <p className="muted">No providers match that account number or phone.</p>
+            )}
           </div>
         </div>
       </div>
