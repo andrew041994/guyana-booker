@@ -1,6 +1,6 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 96ce15cc7b548d1eb5f5499aeb3e2ddca44b4060..984a3b5e8071ce54151f4639e708fb34bfa7d470 100644
+index 984a3b5e8071ce54151f4639e708fb34bfa7d470..481091a954e79090b364f1fc1952eef13ee9f300 100644
 --- a/frontend/src/App.jsx
 +++ b/frontend/src/App.jsx
 @@ -652,51 +652,51 @@ function BillingActionsPanel({
@@ -29,8 +29,8 @@ index 96ce15cc7b548d1eb5f5499aeb3e2ddca44b4060..984a3b5e8071ce54151f4639e708fb34
          />
        </div>
        <div style={{ overflowX: 'auto' }}>
--        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
-+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
+-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
++        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
            <thead>
              <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
                <th style={{ padding: '10px' }}>
@@ -82,8 +82,8 @@ index 96ce15cc7b548d1eb5f5499aeb3e2ddca44b4060..984a3b5e8071ce54151f4639e708fb34
  function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
    return (
      <div style={{ overflowX: 'auto' }}>
--      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
-+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
+-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
++      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
          <thead>
            <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
              <th style={{ padding: '10px' }}>Provider</th>
