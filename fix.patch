@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..68092658658288c719e7108624b9f198e4ee53bf 100644
+index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3439a8a3e 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -4983,102 +4983,105 @@ const loadProviderSummary = async () => {
+@@ -4983,102 +4983,104 @@ const loadProviderSummary = async () => {
                    }}
                  >
                    <Marker
@@ -84,7 +84,6 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..68092658658288c719e7108624b9f198
  
      const feeRate = Math.max(chargePct, 0) / 100;
 +    let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
-+    let appliedBillId = null;
  
      for (let i = 0; i < monthsToShow; i += 1) {
        const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -110,7 +109,7 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..68092658658288c719e7108624b9f198
                booking.customer_name ||
                booking.user_name ||
                booking.client ||
-@@ -5086,150 +5089,171 @@ function ProviderBillingScreen({ token, showFlash }) {
+@@ -5086,150 +5088,170 @@ function ProviderBillingScreen({ token, showFlash }) {
              date: normalizeStart(booking),
              amount:
                Number(
@@ -141,10 +140,9 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..68092658658288c719e7108624b9f198
 +      let billCreditsApplied = 0;
 +      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
 +
-+      if (invoiceDate <= now && remainingCredits > 0 && !appliedBillId) {
++      if (invoiceDate <= now && remainingCredits > 0) {
 +        billCreditsApplied = Math.min(remainingCredits, platformFee);
 +        remainingCredits -= billCreditsApplied;
-+        appliedBillId = statementId;
 +      }
 +
 +      const totalDue = Math.max(platformFee - billCreditsApplied, 0);
@@ -287,7 +285,7 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..68092658658288c719e7108624b9f198
  
        {!billingLoading && !billingError && bills.length === 0 && (
          <View style={styles.card}>
-@@ -5301,50 +5325,58 @@ function ProviderBillingScreen({ token, showFlash }) {
+@@ -5301,50 +5323,58 @@ function ProviderBillingScreen({ token, showFlash }) {
                            Service date: {formatDate(item.date)}
                          </Text>
                        ) : null}
