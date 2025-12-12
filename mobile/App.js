@@ -5090,8 +5090,7 @@ function ProviderBillingScreen({ token, showFlash }) {
     (
       bookingList,
       chargePct = 10,
-      creditBalance = 0,
-      currentMonthDueOverride = null
+      creditBalance = 0
     ) => {
     const now = new Date();
     const statements = [];
@@ -5149,24 +5148,13 @@ function ProviderBillingScreen({ token, showFlash }) {
         0
       );
 
-        const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-        const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
+      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
+      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
 
-        let billCreditsApplied = Math.min(remainingCredits, platformFee);
+      let billCreditsApplied = Math.min(remainingCredits, platformFee);
       remainingCredits -= billCreditsApplied;
 
       let totalDue = Math.max(platformFee - billCreditsApplied, 0);
-
-      // Always mirror the backend-calculated amount for the current month so
-      // the provider's bill matches the admin dashboard.
-      if (i === 0 && Number.isFinite(currentMonthDueOverride)) {
-        totalDue = Math.max(Number(currentMonthDueOverride) || 0, 0);
-        billCreditsApplied = Math.min(
-          platformFee,
-          Math.max(platformFee - totalDue, 0)
-        );
-        remainingCredits = Math.max(remainingCredits - billCreditsApplied, 0);
-      }
 
       statements.push({
         id: statementId,
@@ -5225,8 +5213,7 @@ function ProviderBillingScreen({ token, showFlash }) {
       const resolvedChargePct = resolveServiceChargePct(summaryData);
       setServiceChargePct(resolvedChargePct);
 
-      const netDue = Number(summaryData?.total_fees_due_gyd);
-      buildBills(bookingList, resolvedChargePct, creditBalance, netDue);
+      buildBills(bookingList, resolvedChargePct, creditBalance);
     } catch (err) {
       console.log("Error loading billing", err.response?.data || err.message);
       setBillingError("Could not load billing statements.");

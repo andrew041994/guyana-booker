@@ -1,82 +1,189 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index 54abee6740b8e21d343a858d359a52915ba43f39..b8ddabfa8f7aef79573a7bf4d7fd1ce102a02446 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -689,70 +689,70 @@ def generate_monthly_bills(db: Session, month: date):
-             existing_bill.total_gyd = total
-             existing_bill.fee_gyd = fee
-             existing_bill.due_date = due
-         else:
-             bill = models.Bill(
-                 provider_id=prov.id,
-                 month=start,
-                 total_gyd=total,
-                 fee_gyd=fee,
-                 due_date=due,
-             )
-             db.add(bill)
+diff --git a/mobile/App.js b/mobile/App.js
+index 95f773002a23e69303c16b55c24443fa147868d9..41f25bedd5318c30ea68fa81d4f42f869db75672 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -5068,52 +5068,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+     return `GYD ${Math.round(amount).toLocaleString()}`;
+   };
  
-     db.commit()
+   const formatDate = (value) => {
+     if (!value) return "-";
+     const dateObj = value instanceof Date ? value : new Date(value);
+     if (Number.isNaN(dateObj.getTime())) return "-";
+     return dateObj.toLocaleDateString("en-US", {
+       month: "short",
+       day: "numeric",
+       year: "numeric",
+     });
+   };
  
+   const normalizeStart = (booking) => {
+     const raw = booking?.start_time || booking?.start;
+     if (!raw) return null;
+     const dateObj = new Date(raw);
+     return Number.isNaN(dateObj.getTime()) ? null : dateObj;
+   };
  
+   const buildBills = useCallback(
+     (
+       bookingList,
+       chargePct = 10,
+-      creditBalance = 0,
+-      currentMonthDueOverride = null
++      creditBalance = 0
+     ) => {
+     const now = new Date();
+     const statements = [];
+     const monthsToShow = 6;
  
+     const feeRate = Math.max(chargePct, 0) / 100;
+     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
  
+     for (let i = 0; i < monthsToShow; i += 1) {
+       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+       const invoiceDate = new Date(
+         coverageStart.getFullYear(),
+         coverageStart.getMonth() + 1,
+         1
+       );
  
- def get_provider_fees_due(db: Session, provider_id: int) -> float:
-     """
-     Amount due for the most recent unpaid bill for this provider, in GYD.
+       const monthBookings = bookingList.filter((booking) => {
+         const start = normalizeStart(booking);
+         if (!start) return false;
+         return start >= coverageStart && start <= coverageEnd;
+       });
  
-     This mirrors the "Total due" shown on the provider-facing bill by:
-     - Taking the latest unpaid bill (so we don't aggregate across months),
--    - Using the platform fee amount (fee_gyd), and
-+    - Using the total bill amount (total_gyd), and
-     - Applying any available bill credits.
-     """
-     latest_unpaid_bill = (
-         db.query(models.Bill)
-         .filter(
-             models.Bill.provider_id == provider_id,
-             models.Bill.is_paid == False,
-         )
-         .order_by(models.Bill.due_date.desc())
-         .first()
-     )
+       const lineItems = monthBookings.length
+         ? monthBookings.map((booking) => ({
+@@ -5127,69 +5126,58 @@ function ProviderBillingScreen({ token, showFlash }) {
+               booking.user,
+             date: normalizeStart(booking),
+             amount:
+               Number(
+                 booking.service_price_gyd ??
+                   booking.price_gyd ??
+                   booking.total_price_gyd ??
+                   booking.price
+               ) || 0,
+           }))
+         : [
+             {
+               bookingId: `empty-${coverageStart.toISOString()}`,
+               description: "No completed bookings recorded",
+               client: "",
+               date: null,
+               amount: 0,
+             },
+           ];
  
-     if not latest_unpaid_bill:
-         return 0.0
+       const servicesTotal = lineItems.reduce(
+         (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
+         0
+       );
  
--    fee_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
-+    total_due = Decimal(str(latest_unpaid_bill.total_gyd or 0))
-     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+-        const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
+-        const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
++      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
++      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
  
--    net_due = fee_due - credits
-+    net_due = total_due - credits
-     if net_due < 0:
-         net_due = Decimal("0")
+-        let billCreditsApplied = Math.min(remainingCredits, platformFee);
++      let billCreditsApplied = Math.min(remainingCredits, platformFee);
+       remainingCredits -= billCreditsApplied;
  
-     return float(net_due)
+       let totalDue = Math.max(platformFee - billCreditsApplied, 0);
  
- 
- def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
-     amount_due = get_provider_fees_due(db, provider.id)
-     latest_bill = (
-         db.query(models.Bill)
-         .filter(models.Bill.provider_id == provider.id)
-         .order_by(models.Bill.due_date.desc())
-         .first()
-     )
- 
-     return {
-         "provider_id": provider.id,
-         "name": user.full_name or "",
-         "account_number": provider.account_number or "",
-         "phone": user.phone or "",
-         "amount_due_gyd": float(amount_due or 0.0),
-         "is_paid": amount_due <= 0,
-         "last_due_date": latest_bill.due_date if latest_bill else None,
+-      // Always mirror the backend-calculated amount for the current month so
+-      // the provider's bill matches the admin dashboard.
+-      if (i === 0 && Number.isFinite(currentMonthDueOverride)) {
+-        totalDue = Math.max(Number(currentMonthDueOverride) || 0, 0);
+-        billCreditsApplied = Math.min(
+-          platformFee,
+-          Math.max(platformFee - totalDue, 0)
+-        );
+-        remainingCredits = Math.max(remainingCredits - billCreditsApplied, 0);
+-      }
+-
+       statements.push({
+         id: statementId,
+         coverageStart,
+         coverageEnd,
+         invoiceDate,
+         status: invoiceDate <= now ? "Generated" : "Scheduled",
+         servicesTotal,
+         platformFee,
+         billCreditsApplied,
+         totalDue,
+         lineItems,
+       });
      }
  
+     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
+     setBills(statements);
+   }, []);
+ 
+   const fetchBilling = useCallback(async () => {
+     try {
+       setBillingLoading(true);
+       setBillingError("");
+ 
+       const storedToken = await AsyncStorage.getItem("accessToken");
+       const authToken = token?.token || storedToken;
+@@ -5203,52 +5191,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+         axios.get(`${API}/providers/me/bookings`, {
+           headers: { Authorization: `Bearer ${authToken}` },
+         }),
+         axios
+           .get(`${API}/providers/me/summary`, {
+             headers: { Authorization: `Bearer ${authToken}` },
+           })
+           .catch(() => null),
+       ]);
+ 
+       const bookingList = Array.isArray(bookingsRes.data)
+         ? bookingsRes.data
+         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
+ 
+       const summaryData = summaryRes?.data || null;
+       setBillingSummary(summaryData);
+ 
+       const creditBalance = Math.max(
+         Number(summaryData?.total_credit_balance_gyd) || 0,
+         0
+       );
+ 
+       const resolvedChargePct = resolveServiceChargePct(summaryData);
+       setServiceChargePct(resolvedChargePct);
+ 
+-      const netDue = Number(summaryData?.total_fees_due_gyd);
+-      buildBills(bookingList, resolvedChargePct, creditBalance, netDue);
++      buildBills(bookingList, resolvedChargePct, creditBalance);
+     } catch (err) {
+       console.log("Error loading billing", err.response?.data || err.message);
+       setBillingError("Could not load billing statements.");
+       if (showFlash) {
+         showFlash("error", "Could not load billing statements.");
+       }
+     } finally {
+       setBillingLoading(false);
+     }
+   }, [buildBills, showFlash, token?.token]);
+ 
+   useEffect(() => {
+     fetchBilling();
+   }, [fetchBilling]);
+ 
+   useFocusEffect(
+     useCallback(() => {
+       fetchBilling();
+       return () => {};
+     }, [fetchBilling])
+   );
+ 
+   const handleRefresh = useCallback(async () => {
+     setRefreshing(true);
+     await fetchBilling();
  
 EOF
 )
