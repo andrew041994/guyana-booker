@@ -158,6 +158,13 @@ function useBillingCore() {
   const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
 
   useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    if (storedToken) {
+      axios.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
+    }
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
     return () => clearInterval(interval);
   }, []);
@@ -197,6 +204,36 @@ function useBillingCore() {
 
     fetchProviders();
   }, []);
+
+  useEffect(() => {
+    const fetchBilling = async () => {
+      try {
+        const res = await axios.get(`${API}/admin/billing`);
+        if (!Array.isArray(res.data) || res.data.length === 0) return;
+
+        setCharges(
+          res.data.map((row) => {
+            const amount = Number(row.amount_due_gyd ?? 0);
+            return {
+              id: row.provider_id ?? row.id,
+              providerId: row.provider_id ?? row.id,
+              providerName: row.name || 'Provider',
+              accountNumber: row.account_number || row.accountNumber || '—',
+              phoneNumber: row.phone || row.phone_number || '—',
+              month: billingCycleStart,
+              amount: Math.round(amount),
+              baseServiceCost: 0,
+              isPaid: !!row.is_paid,
+            };
+          }),
+        );
+      } catch (e) {
+        console.log('Using sample billing data', e.message);
+      }
+    };
+
+    fetchBilling();
+  }, [billingCycleStart]);
 
   useEffect(() => {
     setCharges((prev) => {
@@ -253,9 +290,9 @@ function useBillingCore() {
     () =>
       charges.map((charge) => ({
         ...charge,
-        providerName: providerById[charge.providerId]?.name || 'Provider',
-        accountNumber: providerById[charge.providerId]?.accountNumber || '—',
-        phoneNumber: providerById[charge.providerId]?.phoneNumber || '—',
+        providerName: providerById[charge.providerId]?.name || charge.providerName || 'Provider',
+        accountNumber: providerById[charge.providerId]?.accountNumber || charge.accountNumber || '—',
+        phoneNumber: providerById[charge.providerId]?.phoneNumber || charge.phoneNumber || '—',
         isCurrentCycle: charge.month === billingCycleStart,
       })),
     [charges, providerById, billingCycleStart],
