@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta, date
 from dateutil import tz
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -730,14 +730,16 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
         return 0.0
 
     # Billing for providers should only charge the platform fee, not their gross booking revenue.
-    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
+    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0)).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
     # Bill credits should only ever reduce what a provider owes. If the balance is
     # negative (e.g., from a bad manual entry), clamp it to zero so we don't
     # accidentally inflate the amount due.
     credits = max(credits, Decimal("0"))
 
-    net_due = total_due - credits
+    net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     if net_due < 0:
         net_due = Decimal("0")
 
