@@ -1,194 +1,82 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 04abda75bbaad32fe3e900e871b5880e8b36c3e7..9a85f77ba619dfee11d2463bd55cef73ca07899c 100644
---- a/frontend/src/App.jsx
-+++ b/frontend/src/App.jsx
-@@ -135,91 +135,128 @@ const isPastSuspensionCutoff = () => {
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 54abee6740b8e21d343a858d359a52915ba43f39..b8ddabfa8f7aef79573a7bf4d7fd1ce102a02446 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -689,70 +689,70 @@ def generate_monthly_bills(db: Session, month: date):
+             existing_bill.total_gyd = total
+             existing_bill.fee_gyd = fee
+             existing_bill.due_date = due
+         else:
+             bill = models.Bill(
+                 provider_id=prov.id,
+                 month=start,
+                 total_gyd=total,
+                 fee_gyd=fee,
+                 due_date=due,
+             )
+             db.add(bill)
  
- function useBillingCore() {
-   const billingCycleStart = useMemo(() => {
-     const today = new Date();
-     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
-   }, []);
+     db.commit()
  
-   const [providers, setProviders] = useState(sampleProviders);
-   const [charges, setCharges] = useState(() =>
-     sampleCharges.map((charge) => {
-       const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
  
-       return {
-         ...charge,
-         baseServiceCost,
-         isPaid: charge.month === billingCycleStart ? false : charge.isPaid ?? false,
-       };
-     }),
-   );
-   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
-   const [creditInputs, setCreditInputs] = useState({});
-   const [loadingProviders, setLoadingProviders] = useState(false);
-   const [suspensionClock, setSuspensionClock] = useState(() => Date.now());
-   const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
  
-+  useEffect(() => {
-+    const storedToken = localStorage.getItem('token');
-+    if (storedToken) {
-+      axios.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
-+    }
-+  }, []);
-+
-   useEffect(() => {
-     const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
-     return () => clearInterval(interval);
-   }, []);
  
-   useEffect(() => {
-     const fetchProviders = async () => {
-       try {
-         setLoadingProviders(true);
-         const res = await axios.get(`${API}/providers`);
-         if (Array.isArray(res.data) && res.data.length) {
-           const normalized = res.data.map((p) => ({
-             id: p.provider_id || p.id,
-             name: p.name || 'Provider',
-             accountNumber: p.account_number || p.accountNumber || '—',
-             phoneNumber: p.phone || p.phone_number || '—',
-             location: p.location || 'Unknown area',
-             lat: p.lat,
-             long: p.long,
-             outstanding: Math.floor(Math.random() * 40000) + 5000,
-             credit: 0,
-             isLocked: false,
-             autoSuspended: false,
-             lastActive: '2024-10-10',
-             totalBookings: Math.floor(Math.random() * 40) + 5,
-             cancellations: Math.floor(Math.random() * 5),
-             noShows: Math.floor(Math.random() * 2),
-             services: p.services || [],
-           }));
-           setProviders(normalized);
-         }
-       } catch (e) {
-         console.log('Using sample providers', e.message);
-       } finally {
-         setLoadingProviders(false);
-       }
-     };
  
-     fetchProviders();
-   }, []);
+ def get_provider_fees_due(db: Session, provider_id: int) -> float:
+     """
+     Amount due for the most recent unpaid bill for this provider, in GYD.
  
-+  useEffect(() => {
-+    const fetchBilling = async () => {
-+      try {
-+        const res = await axios.get(`${API}/admin/billing`);
-+        if (!Array.isArray(res.data) || res.data.length === 0) return;
-+
-+        setCharges(
-+          res.data.map((row) => {
-+            const amount = Number(row.amount_due_gyd ?? 0);
-+            return {
-+              id: row.provider_id ?? row.id,
-+              providerId: row.provider_id ?? row.id,
-+              providerName: row.name || 'Provider',
-+              accountNumber: row.account_number || row.accountNumber || '—',
-+              phoneNumber: row.phone || row.phone_number || '—',
-+              month: billingCycleStart,
-+              amount: Math.round(amount),
-+              baseServiceCost: 0,
-+              isPaid: !!row.is_paid,
-+            };
-+          }),
-+        );
-+      } catch (e) {
-+        console.log('Using sample billing data', e.message);
-+      }
-+    };
-+
-+    fetchBilling();
-+  }, [billingCycleStart]);
-+
-   useEffect(() => {
-     setCharges((prev) => {
-       if (!providers.length) return prev;
+     This mirrors the "Total due" shown on the provider-facing bill by:
+     - Taking the latest unpaid bill (so we don't aggregate across months),
+-    - Using the platform fee amount (fee_gyd), and
++    - Using the total bill amount (total_gyd), and
+     - Applying any available bill credits.
+     """
+     latest_unpaid_bill = (
+         db.query(models.Bill)
+         .filter(
+             models.Bill.provider_id == provider_id,
+             models.Bill.is_paid == False,
+         )
+         .order_by(models.Bill.due_date.desc())
+         .first()
+     )
  
-       let nextId = prev.reduce((max, c) => Math.max(max, c.id), 0) + 1;
-       let updated = [...prev];
+     if not latest_unpaid_bill:
+         return 0.0
  
-       providers.forEach((provider) => {
-         const existing = updated.find((c) => c.providerId === provider.id);
-         if (!existing) {
-           const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
-           updated.push({
-             id: nextId++,
-             providerId: provider.id,
-             month: billingCycleStart,
-             amount,
-             baseServiceCost: Math.round((amount / DEFAULT_SERVICE_CHARGE) * 100),
-             isPaid: false,
-           });
-         }
-       });
+-    fee_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
++    total_due = Decimal(str(latest_unpaid_bill.total_gyd or 0))
+     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
  
-       return updated;
-     });
-   }, [providers, billingCycleStart]);
-@@ -231,53 +268,53 @@ function useBillingCore() {
-       prev.map((provider) => {
-         const hasUnpaidCurrentCharge = charges.some(
-           (charge) => charge.providerId === provider.id && charge.month === billingCycleStart && !charge.isPaid,
-         );
-         const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
+-    net_due = fee_due - credits
++    net_due = total_due - credits
+     if net_due < 0:
+         net_due = Decimal("0")
  
-         if (provider.autoSuspended === autoSuspended) return provider;
+     return float(net_due)
  
-         return { ...provider, autoSuspended };
-       }),
-     );
-   }, [billingCycleStart, charges, suspensionClock]);
  
-   const providerById = useMemo(() => {
-     const map = {};
-     providers.forEach((p) => {
-       map[p.id] = p;
-     });
-     return map;
-   }, [providers]);
+ def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
+     amount_due = get_provider_fees_due(db, provider.id)
+     latest_bill = (
+         db.query(models.Bill)
+         .filter(models.Bill.provider_id == provider.id)
+         .order_by(models.Bill.due_date.desc())
+         .first()
+     )
  
-   const resolvedCharges = useMemo(
-     () =>
-       charges.map((charge) => ({
-         ...charge,
--        providerName: providerById[charge.providerId]?.name || 'Provider',
--        accountNumber: providerById[charge.providerId]?.accountNumber || '—',
--        phoneNumber: providerById[charge.providerId]?.phoneNumber || '—',
-+        providerName: providerById[charge.providerId]?.name || charge.providerName || 'Provider',
-+        accountNumber: providerById[charge.providerId]?.accountNumber || charge.accountNumber || '—',
-+        phoneNumber: providerById[charge.providerId]?.phoneNumber || charge.phoneNumber || '—',
-         isCurrentCycle: charge.month === billingCycleStart,
-       })),
-     [charges, providerById, billingCycleStart],
-   );
+     return {
+         "provider_id": provider.id,
+         "name": user.full_name or "",
+         "account_number": provider.account_number or "",
+         "phone": user.phone or "",
+         "amount_due_gyd": float(amount_due or 0.0),
+         "is_paid": amount_due <= 0,
+         "last_due_date": latest_bill.due_date if latest_bill else None,
+     }
  
-   const applyCredit = (providerId) => {
-     const creditValue = Number(creditInputs[providerId] || 0);
-     if (!creditValue) return;
-     setProviders((prev) =>
-       prev.map((p) =>
-         p.id === providerId ? { ...p, credit: p.credit + creditValue, outstanding: Math.max(0, p.outstanding - creditValue) } : p,
-       ),
-     );
-     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
-   };
- 
-   const toggleLock = (providerId) => {
-     setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
-   };
- 
-   const toggleChargeSelection = (chargeId) => {
-     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
-   };
- 
-   const toggleAllChargesSelection = (chargeIds = charges.map((c) => c.id)) => {
  
 EOF
 )

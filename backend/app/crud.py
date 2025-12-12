@@ -711,7 +711,7 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
 
     This mirrors the "Total due" shown on the provider-facing bill by:
     - Taking the latest unpaid bill (so we don't aggregate across months),
-    - Using the platform fee amount (fee_gyd), and
+    - Using the total bill amount (total_gyd), and
     - Applying any available bill credits.
     """
     latest_unpaid_bill = (
@@ -727,10 +727,10 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     if not latest_unpaid_bill:
         return 0.0
 
-    fee_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
+    total_due = Decimal(str(latest_unpaid_bill.total_gyd or 0))
     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
 
-    net_due = fee_due - credits
+    net_due = total_due - credits
     if net_due < 0:
         net_due = Decimal("0")
 
