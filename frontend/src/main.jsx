@@ -313,6 +313,68 @@ function App() {
     return children
   }
 
+  const AdminBilling = () => {
+    const [charges, setCharges] = React.useState([
+      { id: 1, provider: 'Ariana De Freitas', month: 'Oct 2024', amount: 26000, isPaid: false },
+      { id: 2, provider: 'Jamall Adams', month: 'Oct 2024', amount: 9000, isPaid: false },
+      { id: 3, provider: 'Kittisha Jones', month: 'Oct 2024', amount: 22000, isPaid: true },
+      { id: 4, provider: 'Linden Collective', month: 'Oct 2024', amount: 12000, isPaid: true },
+    ])
+
+    const togglePaid = (chargeId, nextState) => {
+      setCharges((prev) => prev.map((charge) => (charge.id === chargeId ? { ...charge, isPaid: nextState } : charge)))
+    }
+
+    const markSelected = (paidState) => {
+      setCharges((prev) => prev.map((charge) => ({ ...charge, isPaid: paidState })))
+    }
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Billing</p>
+            <h1>Provider Billing</h1>
+            <p className="header-subtitle">Monitor outstanding balances and mark charges as paid.</p>
+          </div>
+          <div className="button-row">
+            <button className="ghost-btn" onClick={() => markSelected(false)}>Mark all unpaid</button>
+            <button className="primary-btn" onClick={() => markSelected(true)}>Mark all paid</button>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="billing-table">
+            <div className="billing-table__head">
+              <span>Provider</span>
+              <span>Month</span>
+              <span>Amount (GYD)</span>
+              <span>Status</span>
+              <span className="sr-only">Actions</span>
+            </div>
+            {charges.map((charge) => (
+              <div key={charge.id} className="billing-table__row">
+                <div>
+                  <p className="billing-provider">{charge.provider}</p>
+                  <p className="muted">Invoice #{charge.id}</p>
+                </div>
+                <span>{charge.month}</span>
+                <strong>{charge.amount.toLocaleString()}</strong>
+                <span className={charge.isPaid ? 'status-pill paid' : 'status-pill unpaid'}>
+                  {charge.isPaid ? 'Paid' : 'Unpaid'}
+                </span>
+                <div className="billing-actions">
+                  <button className="ghost-btn" onClick={() => togglePaid(charge.id, false)}>Unpaid</button>
+                  <button className="primary-btn" onClick={() => togglePaid(charge.id, true)}>Paid</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const AdminLayout = () => {
     const location = useLocation()
     return (
@@ -324,6 +386,9 @@ function App() {
             </NavLink>
             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
               Service Charge
+            </NavLink>
+            <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+              Billing
             </NavLink>
           </nav>
           <div className="sidebar-footer">
@@ -381,6 +446,7 @@ function App() {
           <Route index element={<Navigate to="/admin/promotions" replace />} />
           <Route path="promotions" element={<AdminPromotions />} />
           <Route path="service-charge" element={<ServiceChargeSettings />} />
+          <Route path="billing" element={<AdminBilling />} />
         </Route>
       </Routes>
     </BrowserRouter>

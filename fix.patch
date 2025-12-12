@@ -1,101 +1,170 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 3de11840a44acb9bbfb628738b47751d38e7499d..a48831647992520670a6ac62d01d3cb291e09517 100644
---- a/frontend/src/App.jsx
-+++ b/frontend/src/App.jsx
-@@ -1134,84 +1134,84 @@ function AdminLayout() {
-           boxShadow: '4px 0 16px rgba(0,0,0,0.15)',
-         }}
-       >
-         <div style={{ fontWeight: 800, fontSize: '20px', letterSpacing: '0.02em' }}>Admin Panel</div>
-         <nav style={{ display: 'grid', gap: '8px' }}>
-           <NavLink
-             to="/admin"
-             end
-             style={({ isActive }) => ({
-               display: 'flex',
-               flexDirection: 'column',
-               gap: '2px',
-               padding: '12px',
-               borderRadius: '10px',
-               textDecoration: 'none',
-               color: 'inherit',
-               background: isActive ? '#0ea5e9' : 'rgba(255,255,255,0.04)',
-               border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
-               fontWeight: 700,
-             })}
-           >
-             <span>Dashboard</span>
-             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Overview</span>
-           </NavLink>
-           <NavLink
--            to="/admin/billing"
-+            to="/admin/service-charge"
-             style={({ isActive }) => ({
-               display: 'flex',
-               flexDirection: 'column',
-               gap: '2px',
-               padding: '12px',
-               borderRadius: '10px',
-               textDecoration: 'none',
-               color: 'inherit',
--              background: isActive ? '#10b981' : 'rgba(255,255,255,0.04)',
-+              background: isActive ? '#16a34a' : 'rgba(255,255,255,0.04)',
-               border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
-               fontWeight: 700,
-             })}
-           >
--            <span>Billing</span>
--            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Mark payments</span>
-+            <span>Service Charge</span>
-+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Adjust admin fee</span>
-           </NavLink>
-           <NavLink
--            to="/admin/service-charge"
-+            to="/admin/billing"
-             style={({ isActive }) => ({
-               display: 'flex',
-               flexDirection: 'column',
-               gap: '2px',
-               padding: '12px',
-               borderRadius: '10px',
-               textDecoration: 'none',
-               color: 'inherit',
--              background: isActive ? '#16a34a' : 'rgba(255,255,255,0.04)',
-+              background: isActive ? '#10b981' : 'rgba(255,255,255,0.04)',
-               border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
-               fontWeight: 700,
-             })}
-           >
--            <span>Service Charge</span>
--            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Adjust admin fee</span>
-+            <span>Billing</span>
-+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Mark provider fees paid</span>
-           </NavLink>
-         </nav>
-         <div style={{ marginTop: 'auto', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
-           Billing settings persist between sessions.
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 23a1c05b6fe5656a571dffbb13892255fff73232..90aa84b11206a5b85982e30f5710882af624ff0b 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -291,62 +291,127 @@ function App() {
+           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
+         </p>
+ 
+         <div className="landing-actions">
+           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
+             {token ? 'Go to dashboard' : 'Login'}
+           </Link>
+           {!token && (
+             <p className="credentials-hint">
+               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
+             </p>
+           )}
          </div>
-       </aside>
-       <main style={{ minHeight: '100vh', background: '#f9fafb' }}>
-         <Outlet />
-       </main>
+       </div>
      </div>
-   );
+   )
+ 
+   const ProtectedRoute = ({ children }) => {
+     const location = useLocation()
+     if (!token) {
+       return <Navigate to="/login" replace state={{ from: location }} />
+     }
+     return children
+   }
+ 
++  const AdminBilling = () => {
++    const [charges, setCharges] = React.useState([
++      { id: 1, provider: 'Ariana De Freitas', month: 'Oct 2024', amount: 26000, isPaid: false },
++      { id: 2, provider: 'Jamall Adams', month: 'Oct 2024', amount: 9000, isPaid: false },
++      { id: 3, provider: 'Kittisha Jones', month: 'Oct 2024', amount: 22000, isPaid: true },
++      { id: 4, provider: 'Linden Collective', month: 'Oct 2024', amount: 12000, isPaid: true },
++    ])
++
++    const togglePaid = (chargeId, nextState) => {
++      setCharges((prev) => prev.map((charge) => (charge.id === chargeId ? { ...charge, isPaid: nextState } : charge)))
++    }
++
++    const markSelected = (paidState) => {
++      setCharges((prev) => prev.map((charge) => ({ ...charge, isPaid: paidState })))
++    }
++
++    return (
++      <div className="admin-page">
++        <div className="admin-header">
++          <div>
++            <p className="eyebrow">Billing</p>
++            <h1>Provider Billing</h1>
++            <p className="header-subtitle">Monitor outstanding balances and mark charges as paid.</p>
++          </div>
++          <div className="button-row">
++            <button className="ghost-btn" onClick={() => markSelected(false)}>Mark all unpaid</button>
++            <button className="primary-btn" onClick={() => markSelected(true)}>Mark all paid</button>
++          </div>
++        </div>
++
++        <div className="admin-card">
++          <div className="billing-table">
++            <div className="billing-table__head">
++              <span>Provider</span>
++              <span>Month</span>
++              <span>Amount (GYD)</span>
++              <span>Status</span>
++              <span className="sr-only">Actions</span>
++            </div>
++            {charges.map((charge) => (
++              <div key={charge.id} className="billing-table__row">
++                <div>
++                  <p className="billing-provider">{charge.provider}</p>
++                  <p className="muted">Invoice #{charge.id}</p>
++                </div>
++                <span>{charge.month}</span>
++                <strong>{charge.amount.toLocaleString()}</strong>
++                <span className={charge.isPaid ? 'status-pill paid' : 'status-pill unpaid'}>
++                  {charge.isPaid ? 'Paid' : 'Unpaid'}
++                </span>
++                <div className="billing-actions">
++                  <button className="ghost-btn" onClick={() => togglePaid(charge.id, false)}>Unpaid</button>
++                  <button className="primary-btn" onClick={() => togglePaid(charge.id, true)}>Paid</button>
++                </div>
++              </div>
++            ))}
++          </div>
++        </div>
++      </div>
++    )
++  }
++
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
++            <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
++              Billing
++            </NavLink>
+           </nav>
+           <div className="sidebar-footer">
+             Logged in · {token ? 'Authenticated' : 'Guest'}
+           </div>
+         </aside>
+         <main className="admin-main" key={location.pathname}>
+           <Outlet />
+         </main>
+       </div>
+     )
+   }
+ 
+   return (
+     <BrowserRouter>
+       <nav className="app-nav">
+         <div className="nav-inner">
+           <Link to="/" className="nav-brand" aria-label="BookitGY home">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
+             <div className="brand-text">
+               <span className="brand-name">BookitGY</span>
+               <span className="brand-subtitle">BookitGY</span>
+             </div>
+           </Link>
+           <div className="nav-actions">
+             {token ? (
+@@ -359,32 +424,33 @@ function App() {
+               >
+                 Logout
+               </button>
+             ) : (
+               <Link className="nav-button" to="/login">
+                 Login
+               </Link>
+             )}
+           </div>
+         </div>
+       </nav>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login />} />
+         <Route
+           path="/admin"
+           element={(
+             <ProtectedRoute>
+               <AdminLayout />
+             </ProtectedRoute>
+           )}
+         >
+           <Route index element={<Navigate to="/admin/promotions" replace />} />
+           <Route path="promotions" element={<AdminPromotions />} />
+           <Route path="service-charge" element={<ServiceChargeSettings />} />
++          <Route path="billing" element={<AdminBilling />} />
+         </Route>
+       </Routes>
+     </BrowserRouter>
+   )
  }
  
- function ServiceChargeSettings() {
-   const [draft, setDraft] = useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE);
-   const [savedRate, setSavedRate] = useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE);
- 
-   const save = () => {
-     const normalized = normalizeServiceCharge(draft);
-     persistServiceCharge(normalized);
-     setSavedRate(normalized);
-     setDraft(normalized);
-     alert(`Service charge saved at ${normalized}%`);
-   };
- 
+ ReactDOM.createRoot(document.getElementById('root')).render(<App />)
  
 EOF
 )
