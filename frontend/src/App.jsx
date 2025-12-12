@@ -16,6 +16,7 @@ const sampleProviders = [
     outstanding: 32000,
     credit: 5000,
     isLocked: false,
+    autoSuspended: false,
     lastActive: '2024-10-10',
     totalBookings: 42,
     cancellations: 3,
@@ -31,6 +32,7 @@ const sampleProviders = [
     outstanding: 18000,
     credit: 0,
     isLocked: false,
+    autoSuspended: false,
     lastActive: '2024-09-28',
     totalBookings: 18,
     cancellations: 4,
@@ -46,6 +48,7 @@ const sampleProviders = [
     outstanding: 52000,
     credit: 15000,
     isLocked: true,
+    autoSuspended: false,
     lastActive: '2024-08-30',
     totalBookings: 7,
     cancellations: 2,
@@ -61,6 +64,7 @@ const sampleProviders = [
     outstanding: 12000,
     credit: 0,
     isLocked: false,
+    autoSuspended: false,
     lastActive: '2024-10-11',
     totalBookings: 26,
     cancellations: 1,
@@ -107,6 +111,18 @@ const loadStoredServiceCharge = () => {
 
 const persistServiceCharge = (rate) => {
   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
+};
+
+const getSuspensionCutoffDate = () => {
+  const today = new Date();
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 15));
+};
+
+const isPastSuspensionCutoff = () => {
+  const now = new Date();
+  const cutoff = getSuspensionCutoffDate();
+
+  return now.getTime() >= cutoff.getTime();
 };
 
 function Login({ onLogin }) {
@@ -349,18 +365,20 @@ function useLeafletMap(providers) {
         maxZoom: 19,
       }).addTo(mapInstance);
 
-      providers
-        .filter((p) => p.lat && p.long)
-        .forEach((provider) => {
-          const marker = window.L.marker([provider.lat, provider.long]).addTo(mapInstance);
-          marker.bindPopup(
-            `<div style="font-weight:700">${provider.name}</div>` +
-              `<div style="color:#6b7280">${provider.location}</div>` +
-              `<div style="font-size:12px">Services: ${provider.services?.join(', ') || 'N/A'}</div>` +
-              `<div style="font-size:12px; color:${provider.isLocked ? '#b91c1c' : '#16a34a'}">${provider.isLocked ? 'Suspended' : 'Active'}</div>`
-          );
-        });
-    };
+        providers
+          .filter((p) => p.lat && p.long)
+          .forEach((provider) => {
+            const suspended = provider.isLocked || provider.autoSuspended;
+            const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : suspended ? 'Suspended' : 'Active';
+            const marker = window.L.marker([provider.lat, provider.long]).addTo(mapInstance);
+            marker.bindPopup(
+              `<div style="font-weight:700">${provider.name}</div>` +
+                `<div style="color:#6b7280">${provider.location}</div>` +
+                `<div style="font-size:12px">Services: ${provider.services?.join(', ') || 'N/A'}</div>` +
+                `<div style="font-size:12px; color:${suspended ? '#b91c1c' : '#16a34a'}">${statusLabel}</div>`
+            );
+          });
+      };
 
     ensureLeaflet();
 
@@ -400,8 +418,15 @@ function AdminDashboard() {
   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
   const [creditInputs, setCreditInputs] = useState({});
   const [loadingProviders, setLoadingProviders] = useState(false);
+  const [suspensionClock, setSuspensionClock] = useState(() => Date.now());
+  const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
 
   useLeafletMap(providers);
+
+  useEffect(() => {
+    const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const fetchProviders = async () => {
@@ -418,6 +443,7 @@ function AdminDashboard() {
             outstanding: Math.floor(Math.random() * 40000) + 5000,
             credit: 0,
             isLocked: false,
+            autoSuspended: false,
             lastActive: '2024-10-10',
             totalBookings: Math.floor(Math.random() * 40) + 5,
             cancellations: Math.floor(Math.random() * 5),
@@ -435,6 +461,23 @@ function AdminDashboard() {
 
     fetchProviders();
   }, []);
+
+  useEffect(() => {
+    const inSuspensionWindow = isPastSuspensionCutoff();
+
+    setProviders((prev) =>
+      prev.map((provider) => {
+        const hasUnpaidCurrentCharge = charges.some(
+          (charge) => charge.providerId === provider.id && charge.month === billingCycleStart && !charge.isPaid,
+        );
+        const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
+
+        if (provider.autoSuspended === autoSuspended) return provider;
+
+        return { ...provider, autoSuspended };
+      }),
+    );
+  }, [billingCycleStart, charges, suspensionClock]);
 
   const totalProviders = providers.length;
   const totalActiveProviders = providers.filter((p) => {
@@ -559,6 +602,7 @@ function AdminDashboard() {
   const resolvedCharges = charges.map((charge) => ({
     ...charge,
     providerName: providerById[charge.providerId]?.name || 'Provider',
+    isCurrentCycle: charge.month === billingCycleStart,
   }));
 
   const dau = 48;
@@ -647,50 +691,56 @@ function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {resolvedCharges.map((charge) => (
-                <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '10px' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedChargeIds.includes(charge.id)}
-                      onChange={() => toggleChargeSelection(charge.id)}
-                    />
-                  </td>
-                  <td style={{ padding: '10px' }}>{charge.providerName}</td>
-                  <td style={{ padding: '10px' }}>{charge.month}</td>
-                  <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
-                  <td style={{ padding: '10px' }}>
-                    <span
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '999px',
-                        background: charge.isPaid ? '#dcfce7' : '#fef9c3',
-                        color: charge.isPaid ? '#15803d' : '#92400e',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                      }}
-                    >
-                      {charge.isPaid ? 'Paid' : 'Unpaid'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => updateSingleChargeStatus(charge.id, true)}
-                        style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
+              {resolvedCharges.map((charge) => {
+                const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
+                const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
+                const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
+
+                return (
+                  <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '10px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedChargeIds.includes(charge.id)}
+                        onChange={() => toggleChargeSelection(charge.id)}
+                      />
+                    </td>
+                    <td style={{ padding: '10px' }}>{charge.providerName}</td>
+                    <td style={{ padding: '10px' }}>{charge.month}</td>
+                    <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
+                    <td style={{ padding: '10px' }}>
+                      <span
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '999px',
+                          background: badgeBackground,
+                          color: badgeColor,
+                          fontWeight: 700,
+                          fontSize: '12px',
+                        }}
                       >
-                        Mark Paid
-                      </button>
-                      <button
-                        onClick={() => updateSingleChargeStatus(charge.id, false)}
-                        style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
-                      >
-                        Mark Unpaid
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {statusLabel}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => updateSingleChargeStatus(charge.id, true)}
+                          style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
+                        >
+                          Mark Paid
+                        </button>
+                        <button
+                          onClick={() => updateSingleChargeStatus(charge.id, false)}
+                          style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
+                        >
+                          Mark Unpaid
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -708,7 +758,8 @@ function AdminDashboard() {
             Mark Unpaid
           </button>
           <div style={{ color: '#6b7280', fontSize: '14px' }}>
-            Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}).
+            Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}). Accounts
+            automatically suspend at midnight on the 15th ({suspensionCutoffLabel}) if the current cycle remains unpaid.
           </div>
         </div>
       </ReportSection>
@@ -727,55 +778,83 @@ function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {providers.map((provider) => (
-                <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '10px' }}>
-                    <div style={{ fontWeight: 700 }}>{provider.name}</div>
-                    <div style={{ color: '#6b7280' }}>{provider.location}</div>
-                  </td>
-                  <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
-                  <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
-                  <td style={{ padding: '10px' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input
-                        type="number"
-                        placeholder="Amount"
-                        value={creditInputs[provider.id] || ''}
-                        onChange={(e) => setCreditInputs((prev) => ({ ...prev, [provider.id]: e.target.value }))}
-                        style={{ padding: '8px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
-                      />
+              {providers.map((provider) => {
+                const suspended = provider.isLocked || provider.autoSuspended;
+                const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isLocked ? 'Suspended' : 'Active';
+                const toggleDisabled = provider.autoSuspended && !provider.isLocked;
+
+                return (
+                  <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ fontWeight: 700 }}>{provider.name}</div>
+                      <div style={{ color: '#6b7280' }}>{provider.location}</div>
+                    </td>
+                    <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
+                    <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          type="number"
+                          placeholder="Amount"
+                          value={creditInputs[provider.id] || ''}
+                          onChange={(e) => setCreditInputs((prev) => ({ ...prev, [provider.id]: e.target.value }))}
+                          style={{ padding: '8px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
+                        />
+                        <button
+                          onClick={() => applyCredit(provider.id)}
+                          style={{
+                            background: '#16a34a',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 10px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px' }}>
+                      {suspended ? (
+                        <div style={{ display: 'grid', gap: '4px' }}>
+                          <span style={{ color: '#b91c1c', fontWeight: 700 }}>{statusLabel}</span>
+                          {provider.autoSuspended && (
+                            <span style={{ color: '#92400e', fontSize: '12px' }}>
+                              Auto-suspended on the 15th due to unpaid charges.
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#15803d', fontWeight: 700 }}>Active</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px' }}>
                       <button
-                        onClick={() => applyCredit(provider.id)}
-                        style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 10px', fontWeight: 700 }}
+                        onClick={() => toggleLock(provider.id)}
+                        disabled={toggleDisabled}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          color: suspended ? '#16a34a' : 'white',
+                          background: suspended ? '#ecfdf3' : '#b91c1c',
+                          fontWeight: 700,
+                          opacity: toggleDisabled ? 0.6 : 1,
+                          cursor: toggleDisabled ? 'not-allowed' : 'pointer',
+                        }}
                       >
-                        Apply
+                        {provider.isLocked ? 'Unlock' : suspended ? 'Locked' : 'Lock'}
                       </button>
-                    </div>
-                  </td>
-                  <td style={{ padding: '10px' }}>
-                    {provider.isLocked ? (
-                      <span style={{ color: '#b91c1c', fontWeight: 700 }}>Suspended</span>
-                    ) : (
-                      <span style={{ color: '#15803d', fontWeight: 700 }}>Active</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px' }}>
-                    <button
-                      onClick={() => toggleLock(provider.id)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        color: provider.isLocked ? '#16a34a' : 'white',
-                        background: provider.isLocked ? '#ecfdf3' : '#b91c1c',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {provider.isLocked ? 'Unlock' : 'Lock'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      {toggleDisabled && (
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                          Set the charge to paid to restore the account.
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

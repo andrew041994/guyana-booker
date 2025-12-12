@@ -1,321 +1,695 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 6c770223e2ce4c4c9901841d6897f723d4b3c63a..437042de73e3c1777e95c791918a85a3ab4bcf96 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -3198,51 +3198,52 @@ function SearchScreen({
- // function AdminScreen() {
- //   return (
- //     <View style={styles.container}>
- //       <Text style={styles.title}>Provider</Text>
- //     </View>
- //   );
- // }
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index cf27dac76048222649da77ca55aee7b821dc7475..d2c9c1581ee114d721f281b6585d8c69eab58a22 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,136 +1,152 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+ import axios from 'axios';
  
- function ProviderDashboardScreen({ token, showFlash }) {
-   // const providerLabel = profile?.full_name || "Provider";
-   const [services, setServices] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [servicesError, setServicesError] = useState("");
-   const [adding, setAdding] = useState(false);
-   const [newName, setNewName] = useState("");
-   const [newPrice, setNewPrice] = useState("");
-   const [newDuration, setNewDuration] = useState("30");
-   const [newDescription, setNewDescription] = useState("");
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(true);
-   const [bookingsError, setBookingsError] = useState("");
-   const [workingHours, setWorkingHours] = useState([]);
-   const [hoursLoading, setHoursLoading] = useState(false);
-   const [hoursError, setHoursError] = useState("");
-   const [showHours, setShowHours] = useState(false);
--  const [hoursFlash, setHoursFlash] = useState(null); 
-+  const [hoursFlash, setHoursFlash] = useState(null);
-+  const [refreshing, setRefreshing] = useState(false);
-   const [showProfileEditor, setShowProfileEditor] = useState(false);
-   const [profileLoading, setProfileLoading] = useState(false);
-   const [profileError, setProfileError] = useState("");
-   const [profile, setProfile] = useState({
-   full_name: "",
-   phone: "",
-   whatsapp: "",
-   location: "",
-   bio: "",
-   professions: [],
-   });
-   const [provider, setProvider] = useState(null);  // 👈 add this
+ const API = 'http://localhost:8000';
+ const DEFAULT_SERVICE_CHARGE = 10;
+ const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
  
+ const sampleProviders = [
+   {
+     id: 1,
+     name: 'Ariana De Freitas',
+     location: 'Georgetown',
+     lat: 6.8013,
+     long: -58.155,
+     outstanding: 32000,
+     credit: 5000,
+     isLocked: false,
++    autoSuspended: false,
+     lastActive: '2024-10-10',
+     totalBookings: 42,
+     cancellations: 3,
+     noShows: 1,
+     services: ['Makeup', 'Hair Styling'],
+   },
+   {
+     id: 2,
+     name: 'Jamall Adams',
+     location: 'East Bank',
+     lat: 6.7484,
+     long: -58.2439,
+     outstanding: 18000,
+     credit: 0,
+     isLocked: false,
++    autoSuspended: false,
+     lastActive: '2024-09-28',
+     totalBookings: 18,
+     cancellations: 4,
+     noShows: 0,
+     services: ['Barber', 'Beard Trim'],
+   },
+   {
+     id: 3,
+     name: 'Kittisha Jones',
+     location: 'Kitty',
+     lat: 6.8236,
+     long: -58.151,
+     outstanding: 52000,
+     credit: 15000,
+     isLocked: true,
++    autoSuspended: false,
+     lastActive: '2024-08-30',
+     totalBookings: 7,
+     cancellations: 2,
+     noShows: 1,
+     services: ['Massage'],
+   },
+   {
+     id: 4,
+     name: 'Linden Collective',
+     location: 'Linden',
+     lat: 5.9896,
+     long: -58.2705,
+     outstanding: 12000,
+     credit: 0,
+     isLocked: false,
++    autoSuspended: false,
+     lastActive: '2024-10-11',
+     totalBookings: 26,
+     cancellations: 1,
+     noShows: 0,
+     services: ['Spa', 'Nails'],
+   },
+ ];
  
- const providerLabel =
-   (profile?.full_name && profile.full_name.trim()) ||
-   token?.email ||
-   "Provider";
+ const sampleCharges = [
+   { id: 101, providerId: 1, month: '2024-10-01', amount: 26000, isPaid: false },
+   { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
+   { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
  
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
+ ];
  
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
- const [todayError, setTodayError] = useState("");
-@@ -3273,50 +3274,78 @@ const [catalogUploading, setCatalogUploading] = useState(false);
-     loadTodayBookings();
-     loadUpcomingBookings(); 
-     loadProviderLocation(); 
-     loadProviderSummary();
-     loadProviderProfile();
-     loadCatalog();
+ const signupHistory = [
+   { month: 'Jun', providers: 10, clients: 54 },
+   { month: 'Jul', providers: 14, clients: 62 },
+   { month: 'Aug', providers: 21, clients: 70 },
+   { month: 'Sep', providers: 33, clients: 82 },
+   { month: 'Oct', providers: 40, clients: 95 },
+ ];
  
+ const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
  
+ const loadStoredServiceCharge = () => {
+   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
+   if (stored === null) return null;
  
-   }, []);
+   return normalizeServiceCharge(stored);
+ };
  
-   useFocusEffect(
-   useCallback(() => {
-     // Re-fetch profile (and anything else you want live-updated)
-     loadProviderProfile();
-     // optional: also refresh bookings, summary, etc.
-     // loadTodayBookings();
-     // loadUpcomingBookings();
-     // loadProviderSummary();
+ const persistServiceCharge = (rate) => {
+   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
+ };
  
-     // No cleanup needed
-     return () => {};
-   }, [])
- );
- 
-+  const handleRefresh = useCallback(async () => {
-+    setRefreshing(true);
++const getSuspensionCutoffDate = () => {
++  const today = new Date();
++  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 15));
++};
 +
-+    await Promise.all([
-+      loadServices(),
-+      loadBookings(),
-+      loadWorkingHours(),
-+      loadTodayBookings(),
-+      loadUpcomingBookings(),
-+      loadProviderSummary(),
-+      loadProviderProfile(),
-+      loadProviderLocation(),
-+      loadCatalog(),
-+    ]);
++const isPastSuspensionCutoff = () => {
++  const now = new Date();
++  const cutoff = getSuspensionCutoffDate();
 +
-+    setRefreshing(false);
-+  }, [
-+    loadServices,
-+    loadBookings,
-+    loadWorkingHours,
-+    loadTodayBookings,
-+    loadUpcomingBookings,
-+    loadProviderSummary,
-+    loadProviderProfile,
-+    loadProviderLocation,
-+    loadCatalog,
-+  ]);
++  return now.getTime() >= cutoff.getTime();
++};
 +
- const resetForm = () => {
-     setNewName("");
-     setNewPrice("");
-     setNewDuration("30");
-     setNewDescription("");
-   };
+ function Login({ onLogin }) {
+   const [email, setEmail] = useState('admin@guyana.com');
+   const [password, setPassword] = useState('pass');
+   const navigate = useNavigate();
  
- const loadBookings = async () => {
+   const login = async () => {
      try {
-       setBookingsLoading(true);
-       setBookingsError("");
- 
-       const storedToken = await AsyncStorage.getItem("accessToken");
-       if (!storedToken) {
-         setBookingsError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const res = await axios.get(`${API}/providers/me/bookings`, {
-         headers: {
-           Authorization: `Bearer ${storedToken}`,
-         },
-       });
- 
-       setBookings(res.data || []);
-@@ -4262,51 +4291,56 @@ const loadProviderSummary = async () => {
-           >
-             <Text style={{ fontSize: 32 }}>
-               {(profile.full_name || token?.email || "P")[0].toUpperCase()}
-             </Text>
-           </View>
-         )}
- 
-         <TouchableOpacity onPress={pickAvatar}>
-           <Text style={{ color: "#007AFF", marginTop: 4 }}>Change photo</Text>
-         </TouchableOpacity>
-       </View>
-       
-       {hoursFlash && (
-         <View
-           style={[
-             styles.hoursFlashGlobal,
-             hoursFlash.type === "error"
-               ? styles.hoursFlashError
-               : styles.hoursFlashSuccess,
-           ]}
-         >
-           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
-         </View>
-       )}
- 
--      <ScrollView contentContainerStyle={styles.providerScroll}>
-+      <ScrollView
-+        contentContainerStyle={styles.providerScroll}
-+        refreshControl={
-+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-+        }
-+      >
-       
-         <Text style={styles.profileTitle}>Provider dashboard</Text>
-         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
-         {/*Account Info */}
-         {providerSummary && (
-           <View style={styles.providerSummaryCard}>
-             <Text style={styles.providerSummaryLabel}>Account number</Text>
-             <Text style={styles.providerSummaryValue}>
-               {providerSummary.account_number || "N/A"}
-             </Text>
-           </View>
-         )}
- 
-         {/* TODAY overview */}
-         <View style={styles.card}>
-           <Text style={styles.label}>TODAY</Text>
- 
-           {todayLoading && (
-             <View style={{ paddingVertical: 10 }}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
-             </View>
-           )}
- 
-           {!todayLoading && todayError ? (
-@@ -4983,50 +5017,51 @@ const loadProviderSummary = async () => {
-                   }}
-                 >
-                   <Marker
-                     coordinate={{
-                       latitude: providerLocation.lat,
-                       longitude: providerLocation.long,
-                     }}
-                     title="Your business location"
-                   />
-                 </MapView>
-             </View>
-           )}
-         </View>
-       </ScrollView>
-     </View>
-   );
- }
- 
- function ProviderBillingScreen({ token, showFlash }) {
-   const [billingSummary, setBillingSummary] = useState(null);
-   const [bills, setBills] = useState([]);
-   const [billingLoading, setBillingLoading] = useState(false);
-   const [billingError, setBillingError] = useState("");
-   const [expandedBills, setExpandedBills] = useState({});
-   const [serviceChargePct, setServiceChargePct] = useState(10);
-+  const [refreshing, setRefreshing] = useState(false);
- 
-   const resolveServiceChargePct = (summaryData) => {
-     const rawValue =
-       summaryData?.service_charge_percentage ??
-       summaryData?.service_charge_percent ??
-       summaryData?.service_charge_rate ??
-       summaryData?.service_charge;
- 
-     const numeric = Number(rawValue);
-     if (!Number.isFinite(numeric)) return 10;
- 
-     // Allow either fractional (0.1) or whole-number (10) representations.
-     const pctValue = numeric <= 1 ? numeric * 100 : numeric;
-     return Math.max(pctValue, 0);
-   };
- 
-   const toggleBillExpanded = (billId) => {
-     setExpandedBills((prev) => ({
-       ...prev,
-       [billId]: !prev[billId],
-     }));
-   };
- 
-   const formatMoney = (value) => {
-     const amount = Number.isFinite(value) ? value : 0;
-@@ -5174,57 +5209,68 @@ function ProviderBillingScreen({ token, showFlash }) {
-       setServiceChargePct(resolvedChargePct);
- 
-       buildBills(bookingList, resolvedChargePct, creditBalance);
-     } catch (err) {
-       console.log("Error loading billing", err.response?.data || err.message);
-       setBillingError("Could not load billing statements.");
-       if (showFlash) {
-         showFlash("error", "Could not load billing statements.");
-       }
-     } finally {
-       setBillingLoading(false);
+       const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
+         username: email,
+         password: password,
+       }));
+       const token = res.data.access_token;
+       localStorage.setItem('token', token);
+       axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+       onLogin?.(token);
+       navigate('/admin');
+     } catch {
+       alert('Wrong credentials');
      }
-   }, [buildBills, showFlash, token?.token]);
- 
-   useEffect(() => {
-     fetchBilling();
-   }, [fetchBilling]);
- 
-   useFocusEffect(
-     useCallback(() => {
-       fetchBilling();
-       return () => {};
-     }, [fetchBilling])
-   );
- 
-+  const handleRefresh = useCallback(async () => {
-+    setRefreshing(true);
-+    await fetchBilling();
-+    setRefreshing(false);
-+  }, [fetchBilling]);
-+
-   const now = new Date();
-   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-   const outstandingFees =
-     now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
+   };
  
    return (
--    <ScrollView contentContainerStyle={styles.providerBillingScroll}>
-+    <ScrollView
-+      contentContainerStyle={styles.providerBillingScroll}
-+      refreshControl={
-+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-+      }
-+    >
-       <Text style={styles.profileTitle}>Billing</Text>
-       <Text style={styles.subtitleSmall}>
-         Bills populate automatically on the 1st of each month with booking
-         details.
-       </Text>
+     <div
+       style={{
+         minHeight: '100vh',
+@@ -327,137 +343,164 @@ function useLeafletMap(providers) {
+       }
+       if (!existingScript) {
+         const script = document.createElement('script');
+         script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+         script.async = true;
+         script.dataset.leaflet = 'true';
+         script.onload = initMap;
+         document.body.appendChild(script);
+       } else {
+         initMap();
+       }
+     };
  
-       {billingSummary && (
-         <View style={styles.providerSummaryCard}>
-           <Text style={styles.providerSummaryLabel}>Account number</Text>
-           <Text style={styles.providerSummaryValue}>
-             {billingSummary.account_number || "N/A"}
-           </Text>
+     let mapInstance;
  
-           <View style={{ height: 8 }} />
+     const initMap = () => {
+       if (!window.L || document.getElementById('provider-map')?.dataset.ready === 'true') return;
+       const mapElement = document.getElementById('provider-map');
+       if (!mapElement) return;
+       mapElement.dataset.ready = 'true';
+       mapInstance = window.L.map('provider-map').setView([6.8013, -58.155], 11);
+       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+         maxZoom: 19,
+       }).addTo(mapInstance);
  
-           <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
-           <Text style={styles.providerSummaryValue}>
-             {formatMoney(outstandingFees)}
-           </Text>
-         </View>
-       )}
+-      providers
+-        .filter((p) => p.lat && p.long)
+-        .forEach((provider) => {
+-          const marker = window.L.marker([provider.lat, provider.long]).addTo(mapInstance);
+-          marker.bindPopup(
+-            `<div style="font-weight:700">${provider.name}</div>` +
+-              `<div style="color:#6b7280">${provider.location}</div>` +
+-              `<div style="font-size:12px">Services: ${provider.services?.join(', ') || 'N/A'}</div>` +
+-              `<div style="font-size:12px; color:${provider.isLocked ? '#b91c1c' : '#16a34a'}">${provider.isLocked ? 'Suspended' : 'Active'}</div>`
+-          );
+-        });
+-    };
++        providers
++          .filter((p) => p.lat && p.long)
++          .forEach((provider) => {
++            const suspended = provider.isLocked || provider.autoSuspended;
++            const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : suspended ? 'Suspended' : 'Active';
++            const marker = window.L.marker([provider.lat, provider.long]).addTo(mapInstance);
++            marker.bindPopup(
++              `<div style="font-weight:700">${provider.name}</div>` +
++                `<div style="color:#6b7280">${provider.location}</div>` +
++                `<div style="font-size:12px">Services: ${provider.services?.join(', ') || 'N/A'}</div>` +
++                `<div style="font-size:12px; color:${suspended ? '#b91c1c' : '#16a34a'}">${statusLabel}</div>`
++            );
++          });
++      };
  
-       {billingLoading && (
-         <View style={styles.card}>
-           <ActivityIndicator />
+     ensureLeaflet();
+ 
+     return () => {
+       if (mapInstance) {
+         mapInstance.remove();
+       }
+       const mapElement = document.getElementById('provider-map');
+       if (mapElement) {
+         mapElement.dataset.ready = 'false';
+         mapElement.innerHTML = '';
+       }
+     };
+   }, [providers]);
+ }
+ 
+ function AdminDashboard() {
+   const billingCycleStart = useMemo(() => {
+     const today = new Date();
+     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+   }, []);
+ 
+   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
+   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
+   const [providers, setProviders] = useState(sampleProviders);
+   const [charges, setCharges] = useState(() =>
+     sampleCharges.map((charge) => {
+       const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
+ 
+       return {
+         ...charge,
+         baseServiceCost,
+         isPaid: charge.month === billingCycleStart ? false : charge.isPaid ?? false,
+       };
+     }),
+   );
+   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
+   const [creditInputs, setCreditInputs] = useState({});
+   const [loadingProviders, setLoadingProviders] = useState(false);
++  const [suspensionClock, setSuspensionClock] = useState(() => Date.now());
++  const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
+ 
+   useLeafletMap(providers);
+ 
++  useEffect(() => {
++    const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
++    return () => clearInterval(interval);
++  }, []);
++
+   useEffect(() => {
+     const fetchProviders = async () => {
+       try {
+         setLoadingProviders(true);
+         const res = await axios.get(`${API}/providers`);
+         if (Array.isArray(res.data) && res.data.length) {
+           const normalized = res.data.map((p) => ({
+             id: p.provider_id || p.id,
+             name: p.name || 'Provider',
+             location: p.location || 'Unknown area',
+             lat: p.lat,
+             long: p.long,
+             outstanding: Math.floor(Math.random() * 40000) + 5000,
+             credit: 0,
+             isLocked: false,
++            autoSuspended: false,
+             lastActive: '2024-10-10',
+             totalBookings: Math.floor(Math.random() * 40) + 5,
+             cancellations: Math.floor(Math.random() * 5),
+             noShows: Math.floor(Math.random() * 2),
+             services: p.services || [],
+           }));
+           setProviders(normalized);
+         }
+       } catch (e) {
+         console.log('Using sample providers', e.message);
+       } finally {
+         setLoadingProviders(false);
+       }
+     };
+ 
+     fetchProviders();
+   }, []);
+ 
++  useEffect(() => {
++    const inSuspensionWindow = isPastSuspensionCutoff();
++
++    setProviders((prev) =>
++      prev.map((provider) => {
++        const hasUnpaidCurrentCharge = charges.some(
++          (charge) => charge.providerId === provider.id && charge.month === billingCycleStart && !charge.isPaid,
++        );
++        const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
++
++        if (provider.autoSuspended === autoSuspended) return provider;
++
++        return { ...provider, autoSuspended };
++      }),
++    );
++  }, [billingCycleStart, charges, suspensionClock]);
++
+   const totalProviders = providers.length;
+   const totalActiveProviders = providers.filter((p) => {
+     const lastActiveDate = new Date(p.lastActive);
+     const thirtyDaysAgo = new Date();
+     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+     return lastActiveDate >= thirtyDaysAgo;
+   }).length;
+ 
+   const bookingStats = useMemo(() => {
+     const now = new Date();
+     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+     const startOfWeek = new Date(startOfDay);
+     startOfWeek.setDate(startOfDay.getDate() - startOfDay.getDay());
+     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+ 
+     const today = sampleBookings.filter((b) => new Date(b.startTime) >= startOfDay).length;
+     const thisWeek = sampleBookings.filter((b) => new Date(b.startTime) >= startOfWeek).length;
+     const thisMonth = sampleBookings.filter((b) => new Date(b.startTime) >= startOfMonth).length;
+ 
+     const total = sampleBookings.length;
+     const completed = sampleBookings.filter((b) => b.status === 'completed').length;
+     const cancelled = sampleBookings.filter((b) => b.status === 'cancelled').length;
+     const noShows = sampleBookings.filter((b) => b.status === 'no-show').length;
+ 
+     return {
+@@ -537,50 +580,51 @@ function AdminDashboard() {
+   const toggleChargeSelection = (chargeId) => {
+     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
+   };
+ 
+   const toggleAllChargesSelection = () => {
+     if (selectedChargeIds.length === charges.length) {
+       setSelectedChargeIds([]);
+     } else {
+       setSelectedChargeIds(charges.map((c) => c.id));
+     }
+   };
+ 
+   const setChargesPaidState = (paidState) => {
+     setCharges((prev) => prev.map((c) => (selectedChargeIds.includes(c.id) ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds([]);
+   };
+ 
+   const updateSingleChargeStatus = (chargeId, paidState) => {
+     setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds((prev) => prev.filter((id) => id !== chargeId));
+   };
+ 
+   const resolvedCharges = charges.map((charge) => ({
+     ...charge,
+     providerName: providerById[charge.providerId]?.name || 'Provider',
++    isCurrentCycle: charge.month === billingCycleStart,
+   }));
+ 
+   const dau = 48;
+   const mau = 620;
+   const revenueTotal = charges.reduce((acc, c) => acc + c.amount, 0);
+   const averageBookingsPerProvider = providers.length ? (sampleBookings.length / providers.length).toFixed(1) : 0;
+ 
+   return (
+     <div style={{ background: '#f9fafb', minHeight: '100vh', padding: '24px' }}>
+       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+         <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#111827' }}>Admin Dashboard</h1>
+         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+           <Link to="/" style={{ color: '#16a34a', fontWeight: 600 }}>Home</Link>
+           <Link to="/login" style={{ color: '#16a34a', fontWeight: 600 }}>Login</Link>
+         </div>
+       </div>
+ 
+       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+         <StatCard label="Total Providers" value={totalProviders} helper="Across all regions" />
+         <StatCard label="Active Providers (30d)" value={totalActiveProviders} helper="Visited in last 30 days" />
+         <StatCard label="Total Clients" value={420} helper="Includes mobile + web" />
+         <StatCard label="DAU / MAU" value={`${dau} / ${mau}`} helper={`${Math.round((dau / mau) * 100)}% engagement`} />
+       </div>
+ 
+       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+@@ -625,179 +669,214 @@ function AdminDashboard() {
+             <StatCard label="Bookings This Week" value={bookingStats.thisWeek} />
+             <StatCard label="Bookings This Month" value={bookingStats.thisMonth} />
+           </div>
+         </ReportSection>
+       </div>
+ 
+       <ReportSection title="Billing Actions">
+         <div style={{ overflowX: 'auto' }}>
+           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
+             <thead>
+               <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
+                 <th style={{ padding: '10px' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <input type="checkbox" checked={selectedChargeIds.length === charges.length} onChange={toggleAllChargesSelection} />
+                     <span>Select</span>
+                   </div>
+                 </th>
+                 <th style={{ padding: '10px' }}>Provider</th>
+                 <th style={{ padding: '10px' }}>Month</th>
+                 <th style={{ padding: '10px' }}>Amount (GYD)</th>
+                 <th style={{ padding: '10px' }}>Status</th>
+                 <th style={{ padding: '10px' }}>Actions</th>
+               </tr>
+             </thead>
+             <tbody>
+-              {resolvedCharges.map((charge) => (
+-                <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+-                  <td style={{ padding: '10px' }}>
+-                    <input
+-                      type="checkbox"
+-                      checked={selectedChargeIds.includes(charge.id)}
+-                      onChange={() => toggleChargeSelection(charge.id)}
+-                    />
+-                  </td>
+-                  <td style={{ padding: '10px' }}>{charge.providerName}</td>
+-                  <td style={{ padding: '10px' }}>{charge.month}</td>
+-                  <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
+-                  <td style={{ padding: '10px' }}>
+-                    <span
+-                      style={{
+-                        padding: '4px 8px',
+-                        borderRadius: '999px',
+-                        background: charge.isPaid ? '#dcfce7' : '#fef9c3',
+-                        color: charge.isPaid ? '#15803d' : '#92400e',
+-                        fontWeight: 700,
+-                        fontSize: '12px',
+-                      }}
+-                    >
+-                      {charge.isPaid ? 'Paid' : 'Unpaid'}
+-                    </span>
+-                  </td>
+-                  <td style={{ padding: '10px' }}>
+-                    <div style={{ display: 'flex', gap: '8px' }}>
+-                      <button
+-                        onClick={() => updateSingleChargeStatus(charge.id, true)}
+-                        style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
+-                      >
+-                        Mark Paid
+-                      </button>
+-                      <button
+-                        onClick={() => updateSingleChargeStatus(charge.id, false)}
+-                        style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
++              {resolvedCharges.map((charge) => {
++                const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
++                const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
++                const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
++
++                return (
++                  <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
++                    <td style={{ padding: '10px' }}>
++                      <input
++                        type="checkbox"
++                        checked={selectedChargeIds.includes(charge.id)}
++                        onChange={() => toggleChargeSelection(charge.id)}
++                      />
++                    </td>
++                    <td style={{ padding: '10px' }}>{charge.providerName}</td>
++                    <td style={{ padding: '10px' }}>{charge.month}</td>
++                    <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
++                    <td style={{ padding: '10px' }}>
++                      <span
++                        style={{
++                          padding: '4px 8px',
++                          borderRadius: '999px',
++                          background: badgeBackground,
++                          color: badgeColor,
++                          fontWeight: 700,
++                          fontSize: '12px',
++                        }}
+                       >
+-                        Mark Unpaid
+-                      </button>
+-                    </div>
+-                  </td>
+-                </tr>
+-              ))}
++                        {statusLabel}
++                      </span>
++                    </td>
++                    <td style={{ padding: '10px' }}>
++                      <div style={{ display: 'flex', gap: '8px' }}>
++                        <button
++                          onClick={() => updateSingleChargeStatus(charge.id, true)}
++                          style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
++                        >
++                          Mark Paid
++                        </button>
++                        <button
++                          onClick={() => updateSingleChargeStatus(charge.id, false)}
++                          style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
++                        >
++                          Mark Unpaid
++                        </button>
++                      </div>
++                    </td>
++                  </tr>
++                );
++              })}
+             </tbody>
+           </table>
+         </div>
+         <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+           <button
+             onClick={() => setChargesPaidState(true)}
+             style={{ padding: '10px 14px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
+           >
+             Mark Paid
+           </button>
+           <button
+             onClick={() => setChargesPaidState(false)}
+             style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '10px', fontWeight: 700 }}
+           >
+             Mark Unpaid
+           </button>
+           <div style={{ color: '#6b7280', fontSize: '14px' }}>
+-            Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}).
++            Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}). Accounts
++            automatically suspend at midnight on the 15th ({suspensionCutoffLabel}) if the current cycle remains unpaid.
+           </div>
+         </div>
+       </ReportSection>
+ 
+       <ReportSection title="Provider Accounts">
+         <div style={{ overflowX: 'auto' }}>
+           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
+             <thead>
+               <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+                 <th style={{ padding: '10px' }}>Provider</th>
+                 <th style={{ padding: '10px' }}>Outstanding</th>
+                 <th style={{ padding: '10px' }}>Credit</th>
+                 <th style={{ padding: '10px' }}>Apply Credit</th>
+                 <th style={{ padding: '10px' }}>Status</th>
+                 <th style={{ padding: '10px' }}>Actions</th>
+               </tr>
+             </thead>
+             <tbody>
+-              {providers.map((provider) => (
+-                <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+-                  <td style={{ padding: '10px' }}>
+-                    <div style={{ fontWeight: 700 }}>{provider.name}</div>
+-                    <div style={{ color: '#6b7280' }}>{provider.location}</div>
+-                  </td>
+-                  <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
+-                  <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
+-                  <td style={{ padding: '10px' }}>
+-                    <div style={{ display: 'flex', gap: '8px' }}>
+-                      <input
+-                        type="number"
+-                        placeholder="Amount"
+-                        value={creditInputs[provider.id] || ''}
+-                        onChange={(e) => setCreditInputs((prev) => ({ ...prev, [provider.id]: e.target.value }))}
+-                        style={{ padding: '8px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
+-                      />
++              {providers.map((provider) => {
++                const suspended = provider.isLocked || provider.autoSuspended;
++                const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isLocked ? 'Suspended' : 'Active';
++                const toggleDisabled = provider.autoSuspended && !provider.isLocked;
++
++                return (
++                  <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
++                    <td style={{ padding: '10px' }}>
++                      <div style={{ fontWeight: 700 }}>{provider.name}</div>
++                      <div style={{ color: '#6b7280' }}>{provider.location}</div>
++                    </td>
++                    <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
++                    <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
++                    <td style={{ padding: '10px' }}>
++                      <div style={{ display: 'flex', gap: '8px' }}>
++                        <input
++                          type="number"
++                          placeholder="Amount"
++                          value={creditInputs[provider.id] || ''}
++                          onChange={(e) => setCreditInputs((prev) => ({ ...prev, [provider.id]: e.target.value }))}
++                          style={{ padding: '8px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
++                        />
++                        <button
++                          onClick={() => applyCredit(provider.id)}
++                          style={{
++                            background: '#16a34a',
++                            color: 'white',
++                            border: 'none',
++                            borderRadius: '8px',
++                            padding: '8px 10px',
++                            fontWeight: 700,
++                          }}
++                        >
++                          Apply
++                        </button>
++                      </div>
++                    </td>
++                    <td style={{ padding: '10px' }}>
++                      {suspended ? (
++                        <div style={{ display: 'grid', gap: '4px' }}>
++                          <span style={{ color: '#b91c1c', fontWeight: 700 }}>{statusLabel}</span>
++                          {provider.autoSuspended && (
++                            <span style={{ color: '#92400e', fontSize: '12px' }}>
++                              Auto-suspended on the 15th due to unpaid charges.
++                            </span>
++                          )}
++                        </div>
++                      ) : (
++                        <span style={{ color: '#15803d', fontWeight: 700 }}>Active</span>
++                      )}
++                    </td>
++                    <td style={{ padding: '10px' }}>
+                       <button
+-                        onClick={() => applyCredit(provider.id)}
+-                        style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 10px', fontWeight: 700 }}
++                        onClick={() => toggleLock(provider.id)}
++                        disabled={toggleDisabled}
++                        style={{
++                          padding: '8px 12px',
++                          borderRadius: '8px',
++                          border: 'none',
++                          color: suspended ? '#16a34a' : 'white',
++                          background: suspended ? '#ecfdf3' : '#b91c1c',
++                          fontWeight: 700,
++                          opacity: toggleDisabled ? 0.6 : 1,
++                          cursor: toggleDisabled ? 'not-allowed' : 'pointer',
++                        }}
+                       >
+-                        Apply
++                        {provider.isLocked ? 'Unlock' : suspended ? 'Locked' : 'Lock'}
+                       </button>
+-                    </div>
+-                  </td>
+-                  <td style={{ padding: '10px' }}>
+-                    {provider.isLocked ? (
+-                      <span style={{ color: '#b91c1c', fontWeight: 700 }}>Suspended</span>
+-                    ) : (
+-                      <span style={{ color: '#15803d', fontWeight: 700 }}>Active</span>
+-                    )}
+-                  </td>
+-                  <td style={{ padding: '10px' }}>
+-                    <button
+-                      onClick={() => toggleLock(provider.id)}
+-                      style={{
+-                        padding: '8px 12px',
+-                        borderRadius: '8px',
+-                        border: 'none',
+-                        color: provider.isLocked ? '#16a34a' : 'white',
+-                        background: provider.isLocked ? '#ecfdf3' : '#b91c1c',
+-                        fontWeight: 700,
+-                      }}
+-                    >
+-                      {provider.isLocked ? 'Unlock' : 'Lock'}
+-                    </button>
+-                  </td>
+-                </tr>
+-              ))}
++                      {toggleDisabled && (
++                        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
++                          Set the charge to paid to restore the account.
++                        </div>
++                      )}
++                    </td>
++                  </tr>
++                );
++              })}
+             </tbody>
+           </table>
+         </div>
+       </ReportSection>
+ 
+       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+         <ReportSection title="Signups Over Time">
+           <div style={{ display: 'grid', gap: '8px' }}>
+             {signupHistory.map((item) => (
+               <div key={item.month} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px', background: '#f9fafb' }}>
+                 <div style={{ fontWeight: 700 }}>{item.month}</div>
+                 <ProgressRow label="Providers" value={item.providers} total={50} accent="#16a34a" />
+                 <ProgressRow label="Clients" value={item.clients} total={120} accent="#0ea5e9" />
+               </div>
+             ))}
+           </div>
+         </ReportSection>
+ 
+         <ReportSection title="Bookings & Revenue">
+           <div style={{ display: 'grid', gap: '8px' }}>
+             <StatCard label="Completion Rate" value={`${bookingStats.completionRate}%`} />
+             <StatCard label="Cancellation Rate" value={`${bookingStats.cancellationRate}%`} />
+             <StatCard label="No-show Rate" value={`${bookingStats.noShowRate}%`} />
+             <StatCard label="Revenue to Date" value={`GYD ${revenueTotal.toLocaleString()}`} />
+           </div>
  
 EOF
 )
