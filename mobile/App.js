@@ -3220,7 +3220,8 @@ function ProviderDashboardScreen({ token, showFlash }) {
   const [hoursLoading, setHoursLoading] = useState(false);
   const [hoursError, setHoursError] = useState("");
   const [showHours, setShowHours] = useState(false);
-  const [hoursFlash, setHoursFlash] = useState(null); 
+  const [hoursFlash, setHoursFlash] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -3294,6 +3295,34 @@ const [catalogUploading, setCatalogUploading] = useState(false);
     return () => {};
   }, [])
 );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+
+    await Promise.all([
+      loadServices(),
+      loadBookings(),
+      loadWorkingHours(),
+      loadTodayBookings(),
+      loadUpcomingBookings(),
+      loadProviderSummary(),
+      loadProviderProfile(),
+      loadProviderLocation(),
+      loadCatalog(),
+    ]);
+
+    setRefreshing(false);
+  }, [
+    loadServices,
+    loadBookings,
+    loadWorkingHours,
+    loadTodayBookings,
+    loadUpcomingBookings,
+    loadProviderSummary,
+    loadProviderProfile,
+    loadProviderLocation,
+    loadCatalog,
+  ]);
 
 const resetForm = () => {
     setNewName("");
@@ -4284,7 +4313,12 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.providerScroll}>
+      <ScrollView
+        contentContainerStyle={styles.providerScroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
       
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
@@ -5005,6 +5039,7 @@ function ProviderBillingScreen({ token, showFlash }) {
   const [billingError, setBillingError] = useState("");
   const [expandedBills, setExpandedBills] = useState({});
   const [serviceChargePct, setServiceChargePct] = useState(10);
+  const [refreshing, setRefreshing] = useState(false);
 
   const resolveServiceChargePct = (summaryData) => {
     const rawValue =
@@ -5196,13 +5231,24 @@ function ProviderBillingScreen({ token, showFlash }) {
     }, [fetchBilling])
   );
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchBilling();
+    setRefreshing(false);
+  }, [fetchBilling]);
+
   const now = new Date();
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const outstandingFees =
     now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.providerBillingScroll}>
+    <ScrollView
+      contentContainerStyle={styles.providerBillingScroll}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+      }
+    >
       <Text style={styles.profileTitle}>Billing</Text>
       <Text style={styles.subtitleSmall}>
         Bills populate automatically on the 1st of each month with booking

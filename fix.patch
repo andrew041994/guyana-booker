@@ -1,68 +1,321 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 04889df66031a3f0817bf330d709034e7e5dea06..23a1c05b6fe5656a571dffbb13892255fff73232 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -296,59 +296,50 @@ function App() {
-             {token ? 'Go to dashboard' : 'Login'}
-           </Link>
-           {!token && (
-             <p className="credentials-hint">
-               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
-             </p>
+diff --git a/mobile/App.js b/mobile/App.js
+index 6c770223e2ce4c4c9901841d6897f723d4b3c63a..437042de73e3c1777e95c791918a85a3ab4bcf96 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -3198,51 +3198,52 @@ function SearchScreen({
+ // function AdminScreen() {
+ //   return (
+ //     <View style={styles.container}>
+ //       <Text style={styles.title}>Provider</Text>
+ //     </View>
+ //   );
+ // }
+ 
+ function ProviderDashboardScreen({ token, showFlash }) {
+   // const providerLabel = profile?.full_name || "Provider";
+   const [services, setServices] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [servicesError, setServicesError] = useState("");
+   const [adding, setAdding] = useState(false);
+   const [newName, setNewName] = useState("");
+   const [newPrice, setNewPrice] = useState("");
+   const [newDuration, setNewDuration] = useState("30");
+   const [newDescription, setNewDescription] = useState("");
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(true);
+   const [bookingsError, setBookingsError] = useState("");
+   const [workingHours, setWorkingHours] = useState([]);
+   const [hoursLoading, setHoursLoading] = useState(false);
+   const [hoursError, setHoursError] = useState("");
+   const [showHours, setShowHours] = useState(false);
+-  const [hoursFlash, setHoursFlash] = useState(null); 
++  const [hoursFlash, setHoursFlash] = useState(null);
++  const [refreshing, setRefreshing] = useState(false);
+   const [showProfileEditor, setShowProfileEditor] = useState(false);
+   const [profileLoading, setProfileLoading] = useState(false);
+   const [profileError, setProfileError] = useState("");
+   const [profile, setProfile] = useState({
+   full_name: "",
+   phone: "",
+   whatsapp: "",
+   location: "",
+   bio: "",
+   professions: [],
+   });
+   const [provider, setProvider] = useState(null);  // 👈 add this
+ 
+ 
+ const providerLabel =
+   (profile?.full_name && profile.full_name.trim()) ||
+   token?.email ||
+   "Provider";
+ 
+ 
+ const [customProfession, setCustomProfession] = useState("");
+ const [providerSummary, setProviderSummary] = useState(null);
+ const [todayBookings, setTodayBookings] = useState([]);
+ const [todayLoading, setTodayLoading] = useState(false);
+ const [todayError, setTodayError] = useState("");
+@@ -3273,50 +3274,78 @@ const [catalogUploading, setCatalogUploading] = useState(false);
+     loadTodayBookings();
+     loadUpcomingBookings(); 
+     loadProviderLocation(); 
+     loadProviderSummary();
+     loadProviderProfile();
+     loadCatalog();
+ 
+ 
+ 
+   }, []);
+ 
+   useFocusEffect(
+   useCallback(() => {
+     // Re-fetch profile (and anything else you want live-updated)
+     loadProviderProfile();
+     // optional: also refresh bookings, summary, etc.
+     // loadTodayBookings();
+     // loadUpcomingBookings();
+     // loadProviderSummary();
+ 
+     // No cleanup needed
+     return () => {};
+   }, [])
+ );
+ 
++  const handleRefresh = useCallback(async () => {
++    setRefreshing(true);
++
++    await Promise.all([
++      loadServices(),
++      loadBookings(),
++      loadWorkingHours(),
++      loadTodayBookings(),
++      loadUpcomingBookings(),
++      loadProviderSummary(),
++      loadProviderProfile(),
++      loadProviderLocation(),
++      loadCatalog(),
++    ]);
++
++    setRefreshing(false);
++  }, [
++    loadServices,
++    loadBookings,
++    loadWorkingHours,
++    loadTodayBookings,
++    loadUpcomingBookings,
++    loadProviderSummary,
++    loadProviderProfile,
++    loadProviderLocation,
++    loadCatalog,
++  ]);
++
+ const resetForm = () => {
+     setNewName("");
+     setNewPrice("");
+     setNewDuration("30");
+     setNewDescription("");
+   };
+ 
+ const loadBookings = async () => {
+     try {
+       setBookingsLoading(true);
+       setBookingsError("");
+ 
+       const storedToken = await AsyncStorage.getItem("accessToken");
+       if (!storedToken) {
+         setBookingsError("No access token found. Please log in again.");
+         return;
+       }
+ 
+       const res = await axios.get(`${API}/providers/me/bookings`, {
+         headers: {
+           Authorization: `Bearer ${storedToken}`,
+         },
+       });
+ 
+       setBookings(res.data || []);
+@@ -4262,51 +4291,56 @@ const loadProviderSummary = async () => {
+           >
+             <Text style={{ fontSize: 32 }}>
+               {(profile.full_name || token?.email || "P")[0].toUpperCase()}
+             </Text>
+           </View>
+         )}
+ 
+         <TouchableOpacity onPress={pickAvatar}>
+           <Text style={{ color: "#007AFF", marginTop: 4 }}>Change photo</Text>
+         </TouchableOpacity>
+       </View>
+       
+       {hoursFlash && (
+         <View
+           style={[
+             styles.hoursFlashGlobal,
+             hoursFlash.type === "error"
+               ? styles.hoursFlashError
+               : styles.hoursFlashSuccess,
+           ]}
+         >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+         </View>
+       )}
+ 
+-      <ScrollView contentContainerStyle={styles.providerScroll}>
++      <ScrollView
++        contentContainerStyle={styles.providerScroll}
++        refreshControl={
++          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
++        }
++      >
+       
+         <Text style={styles.profileTitle}>Provider dashboard</Text>
+         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+         {/*Account Info */}
+         {providerSummary && (
+           <View style={styles.providerSummaryCard}>
+             <Text style={styles.providerSummaryLabel}>Account number</Text>
+             <Text style={styles.providerSummaryValue}>
+               {providerSummary.account_number || "N/A"}
+             </Text>
+           </View>
+         )}
+ 
+         {/* TODAY overview */}
+         <View style={styles.card}>
+           <Text style={styles.label}>TODAY</Text>
+ 
+           {todayLoading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
+             </View>
            )}
-         </div>
-       </div>
-     </div>
-   )
  
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
+           {!todayLoading && todayError ? (
+@@ -4983,50 +5017,51 @@ const loadProviderSummary = async () => {
+                   }}
+                 >
+                   <Marker
+                     coordinate={{
+                       latitude: providerLocation.lat,
+                       longitude: providerLocation.long,
+                     }}
+                     title="Your business location"
+                   />
+                 </MapView>
+             </View>
+           )}
+         </View>
+       </ScrollView>
+     </View>
+   );
+ }
+ 
+ function ProviderBillingScreen({ token, showFlash }) {
+   const [billingSummary, setBillingSummary] = useState(null);
+   const [bills, setBills] = useState([]);
+   const [billingLoading, setBillingLoading] = useState(false);
+   const [billingError, setBillingError] = useState("");
+   const [expandedBills, setExpandedBills] = useState({});
+   const [serviceChargePct, setServiceChargePct] = useState(10);
++  const [refreshing, setRefreshing] = useState(false);
+ 
+   const resolveServiceChargePct = (summaryData) => {
+     const rawValue =
+       summaryData?.service_charge_percentage ??
+       summaryData?.service_charge_percent ??
+       summaryData?.service_charge_rate ??
+       summaryData?.service_charge;
+ 
+     const numeric = Number(rawValue);
+     if (!Number.isFinite(numeric)) return 10;
+ 
+     // Allow either fractional (0.1) or whole-number (10) representations.
+     const pctValue = numeric <= 1 ? numeric * 100 : numeric;
+     return Math.max(pctValue, 0);
+   };
+ 
+   const toggleBillExpanded = (billId) => {
+     setExpandedBills((prev) => ({
+       ...prev,
+       [billId]: !prev[billId],
+     }));
+   };
+ 
+   const formatMoney = (value) => {
+     const amount = Number.isFinite(value) ? value : 0;
+@@ -5174,57 +5209,68 @@ function ProviderBillingScreen({ token, showFlash }) {
+       setServiceChargePct(resolvedChargePct);
+ 
+       buildBills(bookingList, resolvedChargePct, creditBalance);
+     } catch (err) {
+       console.log("Error loading billing", err.response?.data || err.message);
+       setBillingError("Could not load billing statements.");
+       if (showFlash) {
+         showFlash("error", "Could not load billing statements.");
+       }
+     } finally {
+       setBillingLoading(false);
      }
-     return children
-   }
+   }, [buildBills, showFlash, token?.token]);
  
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
--          <div className="sidebar-header">
--            <div className="logo-circle small">
--              <img src="/bookitgy-logo.png" alt="BookitGY" />
--            </div>
--            <div>
--              <p className="eyebrow">Admin</p>
--              <strong>BookitGY</strong>
--            </div>
--          </div>
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
-           </nav>
-           <div className="sidebar-footer">
-             Logged in · {token ? 'Authenticated' : 'Guest'}
-           </div>
-         </aside>
-         <main className="admin-main" key={location.pathname}>
-           <Outlet />
-         </main>
-       </div>
-     )
-   }
+   useEffect(() => {
+     fetchBilling();
+   }, [fetchBilling]);
+ 
+   useFocusEffect(
+     useCallback(() => {
+       fetchBilling();
+       return () => {};
+     }, [fetchBilling])
+   );
+ 
++  const handleRefresh = useCallback(async () => {
++    setRefreshing(true);
++    await fetchBilling();
++    setRefreshing(false);
++  }, [fetchBilling]);
++
+   const now = new Date();
+   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+   const outstandingFees =
+     now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
  
    return (
-     <BrowserRouter>
-       <nav className="app-nav">
-         <div className="nav-inner">
-           <Link to="/" className="nav-brand" aria-label="BookitGY home">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
+-    <ScrollView contentContainerStyle={styles.providerBillingScroll}>
++    <ScrollView
++      contentContainerStyle={styles.providerBillingScroll}
++      refreshControl={
++        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
++      }
++    >
+       <Text style={styles.profileTitle}>Billing</Text>
+       <Text style={styles.subtitleSmall}>
+         Bills populate automatically on the 1st of each month with booking
+         details.
+       </Text>
+ 
+       {billingSummary && (
+         <View style={styles.providerSummaryCard}>
+           <Text style={styles.providerSummaryLabel}>Account number</Text>
+           <Text style={styles.providerSummaryValue}>
+             {billingSummary.account_number || "N/A"}
+           </Text>
+ 
+           <View style={{ height: 8 }} />
+ 
+           <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
+           <Text style={styles.providerSummaryValue}>
+             {formatMoney(outstandingFees)}
+           </Text>
+         </View>
+       )}
+ 
+       {billingLoading && (
+         <View style={styles.card}>
+           <ActivityIndicator />
  
 EOF
 )
