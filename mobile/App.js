@@ -5005,7 +5005,6 @@ function ProviderBillingScreen({ token, showFlash }) {
   const [billingError, setBillingError] = useState("");
   const [expandedBills, setExpandedBills] = useState({});
   const [serviceChargePct, setServiceChargePct] = useState(10);
-  const [unusedBillCredits, setUnusedBillCredits] = useState(0);
 
   const resolveServiceChargePct = (summaryData) => {
     const rawValue =
@@ -5059,7 +5058,6 @@ function ProviderBillingScreen({ token, showFlash }) {
 
     const feeRate = Math.max(chargePct, 0) / 100;
     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
-    let appliedBillId = null;
 
     for (let i = 0; i < monthsToShow; i += 1) {
       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -5110,16 +5108,11 @@ function ProviderBillingScreen({ token, showFlash }) {
         0
       );
 
-      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
+        const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
+        const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
 
-      let billCreditsApplied = 0;
-      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
-
-      if (invoiceDate <= now && remainingCredits > 0 && !appliedBillId) {
-        billCreditsApplied = Math.min(remainingCredits, platformFee);
-        remainingCredits -= billCreditsApplied;
-        appliedBillId = statementId;
-      }
+        const billCreditsApplied = Math.min(remainingCredits, platformFee);
+      remainingCredits -= billCreditsApplied;
 
       const totalDue = Math.max(platformFee - billCreditsApplied, 0);
 
@@ -5139,7 +5132,6 @@ function ProviderBillingScreen({ token, showFlash }) {
 
     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
     setBills(statements);
-    setUnusedBillCredits(remainingCredits);
   }, []);
 
   const fetchBilling = useCallback(async () => {
@@ -5177,8 +5169,6 @@ function ProviderBillingScreen({ token, showFlash }) {
         Number(summaryData?.total_credit_balance_gyd) || 0,
         0
       );
-
-      setUnusedBillCredits(creditBalance);
 
       const resolvedChargePct = resolveServiceChargePct(summaryData);
       setServiceChargePct(resolvedChargePct);
@@ -5224,13 +5214,6 @@ function ProviderBillingScreen({ token, showFlash }) {
           <Text style={styles.providerSummaryLabel}>Account number</Text>
           <Text style={styles.providerSummaryValue}>
             {billingSummary.account_number || "N/A"}
-          </Text>
-
-          <View style={{ height: 8 }} />
-
-          <Text style={styles.providerSummaryLabel}>Bill credits</Text>
-          <Text style={styles.providerSummaryValue}>
-            {formatMoney(unusedBillCredits)}
           </Text>
 
           <View style={{ height: 8 }} />
@@ -5347,14 +5330,12 @@ function ProviderBillingScreen({ token, showFlash }) {
                 {formatMoney(bill.platformFee)}
               </Text>
             </View>
-            {bill.billCreditsApplied ? (
               <View style={styles.billingTotalsRow}>
                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
                 <Text style={styles.billingTotalsValue}>
                   -{formatMoney(bill.billCreditsApplied)}
                 </Text>
               </View>
-            ) : null}
             <View style={styles.billingTotalsRow}>
               <Text style={styles.billingTotalsLabel}>Total due</Text>
               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>

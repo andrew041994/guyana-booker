@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3439a8a3e 100644
+index 68092658658288c719e7108624b9f198e4ee53bf..6c770223e2ce4c4c9901841d6897f723d4b3c63a 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -4983,102 +4983,104 @@ const loadProviderSummary = async () => {
+@@ -4983,51 +4983,50 @@ const loadProviderSummary = async () => {
                    }}
                  >
                    <Marker
@@ -29,7 +29,7 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
    const [billingError, setBillingError] = useState("");
    const [expandedBills, setExpandedBills] = useState({});
    const [serviceChargePct, setServiceChargePct] = useState(10);
-+  const [unusedBillCredits, setUnusedBillCredits] = useState(0);
+-  const [unusedBillCredits, setUnusedBillCredits] = useState(0);
  
    const resolveServiceChargePct = (summaryData) => {
      const rawValue =
@@ -55,9 +55,7 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
  
    const formatMoney = (value) => {
      const amount = Number.isFinite(value) ? value : 0;
-     return `GYD ${Math.round(amount).toLocaleString()}`;
-   };
- 
+@@ -5037,226 +5036,210 @@ function ProviderBillingScreen({ token, showFlash }) {
    const formatDate = (value) => {
      if (!value) return "-";
      const dateObj = value instanceof Date ? value : new Date(value);
@@ -76,14 +74,14 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
      return Number.isNaN(dateObj.getTime()) ? null : dateObj;
    };
  
--  const buildBills = useCallback((bookingList, chargePct = 10) => {
-+  const buildBills = useCallback((bookingList, chargePct = 10, creditBalance = 0) => {
+   const buildBills = useCallback((bookingList, chargePct = 10, creditBalance = 0) => {
      const now = new Date();
      const statements = [];
      const monthsToShow = 6;
  
      const feeRate = Math.max(chargePct, 0) / 100;
-+    let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
+     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
+-    let appliedBillId = null;
  
      for (let i = 0; i < monthsToShow; i += 1) {
        const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -109,7 +107,7 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
                booking.customer_name ||
                booking.user_name ||
                booking.client ||
-@@ -5086,150 +5088,170 @@ function ProviderBillingScreen({ token, showFlash }) {
+               booking.user,
              date: normalizeStart(booking),
              amount:
                Number(
@@ -134,29 +132,32 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
          0
        );
  
-       const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
--      const totalDue = platformFee; // Total due should only reflect platform fees
-+
-+      let billCreditsApplied = 0;
-+      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
-+
-+      if (invoiceDate <= now && remainingCredits > 0) {
-+        billCreditsApplied = Math.min(remainingCredits, platformFee);
-+        remainingCredits -= billCreditsApplied;
-+      }
-+
-+      const totalDue = Math.max(platformFee - billCreditsApplied, 0);
+-      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
++        const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
++        const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
+ 
+-      let billCreditsApplied = 0;
+-      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
+-
+-      if (invoiceDate <= now && remainingCredits > 0 && !appliedBillId) {
+-        billCreditsApplied = Math.min(remainingCredits, platformFee);
+-        remainingCredits -= billCreditsApplied;
+-        appliedBillId = statementId;
+-      }
++        const billCreditsApplied = Math.min(remainingCredits, platformFee);
++      remainingCredits -= billCreditsApplied;
+ 
+       const totalDue = Math.max(platformFee - billCreditsApplied, 0);
  
        statements.push({
--        id: `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`,
-+        id: statementId,
+         id: statementId,
          coverageStart,
          coverageEnd,
          invoiceDate,
          status: invoiceDate <= now ? "Generated" : "Scheduled",
          servicesTotal,
          platformFee,
-+        billCreditsApplied,
+         billCreditsApplied,
          totalDue,
          lineItems,
        });
@@ -164,7 +165,7 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
  
      statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
      setBills(statements);
-+    setUnusedBillCredits(remainingCredits);
+-    setUnusedBillCredits(remainingCredits);
    }, []);
  
    const fetchBilling = useCallback(async () => {
@@ -198,18 +199,17 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
        const summaryData = summaryRes?.data || null;
        setBillingSummary(summaryData);
  
-+      const creditBalance = Math.max(
-+        Number(summaryData?.total_credit_balance_gyd) || 0,
-+        0
-+      );
-+
-+      setUnusedBillCredits(creditBalance);
-+
+       const creditBalance = Math.max(
+         Number(summaryData?.total_credit_balance_gyd) || 0,
+         0
+       );
+ 
+-      setUnusedBillCredits(creditBalance);
+-
        const resolvedChargePct = resolveServiceChargePct(summaryData);
        setServiceChargePct(resolvedChargePct);
  
--      buildBills(bookingList, resolvedChargePct);
-+      buildBills(bookingList, resolvedChargePct, creditBalance);
+       buildBills(bookingList, resolvedChargePct, creditBalance);
      } catch (err) {
        console.log("Error loading billing", err.response?.data || err.message);
        setBillingError("Could not load billing statements.");
@@ -254,15 +254,13 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
  
            <View style={{ height: 8 }} />
  
--          <Text style={styles.providerSummaryLabel}>Service charge</Text>
--          <Text style={styles.providerSummaryValue}>{serviceChargePct}%</Text>
-+          <Text style={styles.providerSummaryLabel}>Bill credits</Text>
-+          <Text style={styles.providerSummaryValue}>
-+            {formatMoney(unusedBillCredits)}
-+          </Text>
- 
-           <View style={{ height: 8 }} />
- 
+-          <Text style={styles.providerSummaryLabel}>Bill credits</Text>
+-          <Text style={styles.providerSummaryValue}>
+-            {formatMoney(unusedBillCredits)}
+-          </Text>
+-
+-          <View style={{ height: 8 }} />
+-
            <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
            <Text style={styles.providerSummaryValue}>
              {formatMoney(outstandingFees)}
@@ -285,7 +283,10 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
  
        {!billingLoading && !billingError && bills.length === 0 && (
          <View style={styles.card}>
-@@ -5301,50 +5323,58 @@ function ProviderBillingScreen({ token, showFlash }) {
+           <Text style={styles.serviceMeta}>No billing statements yet.</Text>
+         </View>
+       )}
+@@ -5325,58 +5308,56 @@ function ProviderBillingScreen({ token, showFlash }) {
                            Service date: {formatDate(item.date)}
                          </Text>
                        ) : null}
@@ -311,14 +312,14 @@ index 955d5c91d7c2c74ea0f8cffb2a9aa568853eee92..2763895d5431a2cf72600f4e9478f9d3
                  {formatMoney(bill.platformFee)}
                </Text>
              </View>
-+            {bill.billCreditsApplied ? (
-+              <View style={styles.billingTotalsRow}>
-+                <Text style={styles.billingTotalsLabel}>Bill credits</Text>
-+                <Text style={styles.billingTotalsValue}>
-+                  -{formatMoney(bill.billCreditsApplied)}
-+                </Text>
-+              </View>
-+            ) : null}
+-            {bill.billCreditsApplied ? (
+               <View style={styles.billingTotalsRow}>
+                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
+                 <Text style={styles.billingTotalsValue}>
+                   -{formatMoney(bill.billCreditsApplied)}
+                 </Text>
+               </View>
+-            ) : null}
              <View style={styles.billingTotalsRow}>
                <Text style={styles.billingTotalsLabel}>Total due</Text>
                <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
