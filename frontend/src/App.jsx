@@ -674,7 +674,7 @@ function BillingActionsPanel({
         />
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
           <thead>
             <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
               <th style={{ padding: '10px' }}>
@@ -810,7 +810,7 @@ function BillingActionsPanel({
 function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
         <thead>
           <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
             <th style={{ padding: '10px' }}>Provider</th>

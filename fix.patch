@@ -1,158 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 9a85f77ba619dfee11d2463bd55cef73ca07899c..96ce15cc7b548d1eb5f5499aeb3e2ddca44b4060 100644
+index 96ce15cc7b548d1eb5f5499aeb3e2ddca44b4060..984a3b5e8071ce54151f4639e708fb34bfa7d470 100644
 --- a/frontend/src/App.jsx
 +++ b/frontend/src/App.jsx
-@@ -271,110 +271,117 @@ function useBillingCore() {
-         );
-         const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
- 
-         if (provider.autoSuspended === autoSuspended) return provider;
- 
-         return { ...provider, autoSuspended };
-       }),
-     );
-   }, [billingCycleStart, charges, suspensionClock]);
- 
-   const providerById = useMemo(() => {
-     const map = {};
-     providers.forEach((p) => {
-       map[p.id] = p;
-     });
-     return map;
-   }, [providers]);
- 
-   const resolvedCharges = useMemo(
-     () =>
-       charges.map((charge) => ({
-         ...charge,
-         providerName: providerById[charge.providerId]?.name || charge.providerName || 'Provider',
-         accountNumber: providerById[charge.providerId]?.accountNumber || charge.accountNumber || '—',
-         phoneNumber: providerById[charge.providerId]?.phoneNumber || charge.phoneNumber || '—',
-+        isLocked: providerById[charge.providerId]?.isLocked || false,
-+        autoSuspended: providerById[charge.providerId]?.autoSuspended || false,
-         isCurrentCycle: charge.month === billingCycleStart,
-       })),
-     [charges, providerById, billingCycleStart],
-   );
- 
-   const applyCredit = (providerId) => {
-     const creditValue = Number(creditInputs[providerId] || 0);
-     if (!creditValue) return;
-     setProviders((prev) =>
-       prev.map((p) =>
-         p.id === providerId ? { ...p, credit: p.credit + creditValue, outstanding: Math.max(0, p.outstanding - creditValue) } : p,
-       ),
-     );
-     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
-   };
- 
-   const toggleLock = (providerId) => {
-     setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
-   };
- 
-+  const setProviderLockState = (providerId, locked) => {
-+    setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: locked } : p)));
-+  };
-+
-   const toggleChargeSelection = (chargeId) => {
-     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
-   };
- 
-   const toggleAllChargesSelection = (chargeIds = charges.map((c) => c.id)) => {
-     const allSelected = chargeIds.length && chargeIds.every((id) => selectedChargeIds.includes(id));
- 
-     if (allSelected) {
-       setSelectedChargeIds((prev) => prev.filter((id) => !chargeIds.includes(id)));
-     } else {
-       setSelectedChargeIds((prev) => Array.from(new Set([...prev, ...chargeIds])));
-     }
-   };
- 
-   const setChargesPaidState = (paidState) => {
-     setCharges((prev) => prev.map((c) => (selectedChargeIds.includes(c.id) ? { ...c, isPaid: paidState } : c)));
-     setSelectedChargeIds([]);
-   };
- 
-   const updateSingleChargeStatus = (chargeId, paidState) => {
-     setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
-     setSelectedChargeIds((prev) => prev.filter((id) => id !== chargeId));
-   };
- 
-   return {
-     applyCredit,
-     billingCycleStart,
-     charges,
-     creditInputs,
-     loadingProviders,
-     providers,
-     resolvedCharges,
-     selectedChargeIds,
-     setCharges,
-     setCreditInputs,
-     setChargesPaidState,
-     suspensionCutoffLabel,
-     toggleAllChargesSelection,
-     toggleChargeSelection,
-     toggleLock,
-+    setProviderLockState,
-     updateSingleChargeStatus,
-   };
- }
- 
- function Login({ onLogin }) {
-   const [email, setEmail] = useState('admin@guyana.com');
-   const [password, setPassword] = useState('pass');
-   const navigate = useNavigate();
- 
-   const login = async () => {
-     try {
-       const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
-         username: email,
-         password: password,
-       }));
-       const token = res.data.access_token;
-       localStorage.setItem('token', token);
-       axios.defaults.headers.common.Authorization = `Bearer ${token}`;
-       onLogin?.(token);
-       navigate('/admin');
-     } catch {
-       alert('Wrong credentials');
-     }
-   };
- 
-@@ -614,50 +621,51 @@ function useLeafletMap(providers) {
- 
-     ensureLeaflet();
- 
-     return () => {
-       if (mapInstance) {
-         mapInstance.remove();
-       }
-       const mapElement = document.getElementById('provider-map');
-       if (mapElement) {
-         mapElement.dataset.ready = 'false';
-         mapElement.innerHTML = '';
-       }
-     };
-   }, [providers]);
- }
- 
- function BillingActionsPanel({
-   resolvedCharges,
-   selectedChargeIds,
-   toggleAllChargesSelection,
-   toggleChargeSelection,
-   setChargesPaidState,
-   updateSingleChargeStatus,
-   billingCycleStart,
-   suspensionCutoffLabel,
-+  setProviderLockState,
- }) {
-   const [searchTerm, setSearchTerm] = useState('');
- 
-   const filteredCharges = useMemo(() => {
-     const term = searchTerm.trim().toLowerCase();
+@@ -652,51 +652,51 @@ function BillingActionsPanel({
      if (!term) return resolvedCharges;
  
      return resolvedCharges.filter((charge) => {
@@ -173,7 +24,13 @@ index 9a85f77ba619dfee11d2463bd55cef73ca07899c..96ce15cc7b548d1eb5f5499aeb3e2ddc
            type="text"
            value={searchTerm}
            onChange={(e) => setSearchTerm(e.target.value)}
-@@ -670,92 +678,127 @@ function BillingActionsPanel({
+           placeholder="Search by account # or phone"
+           style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '260px' }}
+         />
+       </div>
+       <div style={{ overflowX: 'auto' }}>
+-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
++        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
            <thead>
              <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
                <th style={{ padding: '10px' }}>
@@ -199,92 +56,7 @@ index 9a85f77ba619dfee11d2463bd55cef73ca07899c..96ce15cc7b548d1eb5f5499aeb3e2ddc
                const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
                const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
                const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
-+              const suspended = charge.isLocked || charge.autoSuspended;
-+              const accountStatusLabel = charge.autoSuspended
-+                ? 'Suspended (Unpaid)'
-+                : charge.isLocked
-+                  ? 'Suspended by Admin'
-+                  : 'Active';
-+              const suspendDisabled = charge.autoSuspended && !charge.isLocked;
- 
-               return (
-                 <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                   <td style={{ padding: '10px' }}>
-                     <input
-                       type="checkbox"
-                       checked={selectedChargeIds.includes(charge.id)}
-                       onChange={() => toggleChargeSelection(charge.id)}
-                     />
-                   </td>
-                   <td style={{ padding: '10px' }}>{charge.providerName}</td>
-                   <td style={{ padding: '10px' }}>{charge.accountNumber}</td>
-                   <td style={{ padding: '10px' }}>{charge.phoneNumber}</td>
-                   <td style={{ padding: '10px' }}>GYD {charge.amount.toLocaleString()}</td>
-                   <td style={{ padding: '10px' }}>
-                     <span
-                       style={{
-                         padding: '4px 8px',
-                         borderRadius: '999px',
-                         background: badgeBackground,
-                         color: badgeColor,
-                         fontWeight: 700,
-                         fontSize: '12px',
-                       }}
-                     >
-                       {statusLabel}
-                     </span>
-+                    <div style={{ marginTop: '6px', fontSize: '12px', color: suspended ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
-+                      {accountStatusLabel}
-+                    </div>
-+                    {charge.autoSuspended && (
-+                      <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>
-+                        Auto-suspended on the 15th when current charges are unpaid.
-+                      </div>
-+                    )}
-                   </td>
-                   <td style={{ padding: '10px' }}>
--                    <div style={{ display: 'flex', gap: '8px' }}>
-+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                       <button
-                         onClick={() => updateSingleChargeStatus(charge.id, true)}
-                         style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
-                       >
-                         Mark Paid
-                       </button>
-                       <button
-                         onClick={() => updateSingleChargeStatus(charge.id, false)}
-                         style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
-                       >
-                         Mark Unpaid
-                       </button>
-+                      <button
-+                        onClick={() => setProviderLockState(charge.providerId, !charge.isLocked)}
-+                        disabled={suspendDisabled}
-+                        style={{
-+                          padding: '8px 12px',
-+                          borderRadius: '8px',
-+                          border: '1px solid #e5e7eb',
-+                          background: charge.isLocked ? '#ecfdf3' : '#fee2e2',
-+                          color: charge.isLocked ? '#15803d' : '#b91c1c',
-+                          fontWeight: 700,
-+                          opacity: suspendDisabled ? 0.6 : 1,
-+                          cursor: suspendDisabled ? 'not-allowed' : 'pointer',
-+                        }}
-+                      >
-+                        {charge.isLocked ? 'Restore account' : 'Suspend account'}
-+                      </button>
-+                    </div>
-+                    <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '6px', maxWidth: '320px' }}>
-+                      Suspended providers are hidden from searches and cannot accept appointments.
-+                      {suspendDisabled && ' Mark the current cycle as paid to restore automatically.'}
-                     </div>
-                   </td>
-                 </tr>
-               );
-             })}
-           </tbody>
-         </table>
-       </div>
+@@ -788,51 +788,51 @@ function BillingActionsPanel({
        <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
          <button
            onClick={() => setChargesPaidState(true)}
@@ -302,213 +74,41 @@ index 9a85f77ba619dfee11d2463bd55cef73ca07899c..96ce15cc7b548d1eb5f5499aeb3e2ddc
            Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}). Accounts
            automatically suspend at midnight on the 15th ({suspensionCutoffLabel}) if the current cycle remains unpaid.
          </div>
-@@ -857,50 +900,51 @@ function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, apply
-             );
-           })}
-         </tbody>
-       </table>
-     </div>
-   );
- }
- 
- function AdminDashboard() {
-   const {
-     applyCredit,
-     billingCycleStart,
-     charges,
-     creditInputs,
-     loadingProviders,
-     providers,
-     resolvedCharges,
-     selectedChargeIds,
-     setCharges,
-     setCreditInputs,
-     setChargesPaidState,
-     suspensionCutoffLabel,
-     toggleAllChargesSelection,
-     toggleChargeSelection,
-     toggleLock,
-+    setProviderLockState,
-     updateSingleChargeStatus,
-   } = useBillingCore();
- 
-   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
-   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
- 
-   useLeafletMap(providers);
- 
-   const recalculateChargesForRate = (rate) => {
-     const safeRate = normalizeServiceCharge(rate);
-     setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
-     setServiceCharge(safeRate);
-     setServiceChargeDraft(safeRate);
-   };
- 
-   useEffect(() => {
-     const storedRate = loadStoredServiceCharge();
-     if (storedRate !== null) {
-       recalculateChargesForRate(storedRate);
-     }
-   }, []);
- 
-   const saveServiceCharge = () => {
-     const safeRate = normalizeServiceCharge(serviceChargeDraft);
-     persistServiceCharge(safeRate);
-@@ -1025,50 +1069,51 @@ function AdminDashboard() {
-                 Reset to {DEFAULT_SERVICE_CHARGE}%
-               </button>
-             </div>
-           </div>
-         </ReportSection>
- 
-         <ReportSection title="Booking Health">
-           <div style={{ display: 'grid', gap: '8px' }}>
-             <StatCard label="Bookings Today" value={bookingStats.today} />
-             <StatCard label="Bookings This Week" value={bookingStats.thisWeek} />
-             <StatCard label="Bookings This Month" value={bookingStats.thisMonth} />
-           </div>
-         </ReportSection>
        </div>
- 
-       <ReportSection title="Billing Actions">
-         <BillingActionsPanel
-           billingCycleStart={billingCycleStart}
-           resolvedCharges={resolvedCharges}
-           selectedChargeIds={selectedChargeIds}
-           setChargesPaidState={setChargesPaidState}
-           suspensionCutoffLabel={suspensionCutoffLabel}
-           toggleAllChargesSelection={toggleAllChargesSelection}
-           toggleChargeSelection={toggleChargeSelection}
-           updateSingleChargeStatus={updateSingleChargeStatus}
-+          setProviderLockState={setProviderLockState}
-         />
-       </ReportSection>
- 
-       <ReportSection title="Provider Accounts">
-         <ProviderAccountsTable
-           applyCredit={applyCredit}
-           creditInputs={creditInputs}
-           providers={providers}
-           setCreditInputs={setCreditInputs}
-           toggleLock={toggleLock}
-         />
-       </ReportSection>
- 
-       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
-         <ReportSection title="Signups Over Time">
-           <div style={{ display: 'grid', gap: '8px' }}>
-             {signupHistory.map((item) => (
-               <div key={item.month} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px', background: '#f9fafb' }}>
-                 <div style={{ fontWeight: 700 }}>{item.month}</div>
-                 <ProgressRow label="Providers" value={item.providers} total={50} accent="#16a34a" />
-                 <ProgressRow label="Clients" value={item.clients} total={120} accent="#0ea5e9" />
-               </div>
-             ))}
-           </div>
-         </ReportSection>
-@@ -1140,100 +1185,102 @@ function AdminDashboard() {
-       <ReportSection title="Provider Map">
-         <div style={{ height: '420px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f3f4f6' }}>
-           <div id="provider-map" style={{ height: '100%', width: '100%' }}></div>
-         </div>
-         {loadingProviders && <div style={{ marginTop: '8px', color: '#6b7280' }}>Loading provider pins…</div>}
-       </ReportSection>
-     </div>
+     </>
    );
  }
  
- 
- 
- function BillingManagement() {
-   const {
-     applyCredit,
-     billingCycleStart,
-     creditInputs,
-     providers,
-     resolvedCharges,
-     selectedChargeIds,
-     setChargesPaidState,
-     suspensionCutoffLabel,
-     toggleAllChargesSelection,
-     toggleChargeSelection,
-     toggleLock,
-+    setProviderLockState,
-     updateSingleChargeStatus,
-     setCreditInputs,
-   } = useBillingCore();
- 
-   const unpaidCharges = resolvedCharges.filter((c) => !c.isPaid);
-   const outstandingBalance = providers.reduce((acc, p) => acc + p.outstanding, 0);
- 
+ function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
    return (
-     <div style={{ padding: '28px', background: '#f9fafb', minHeight: '100vh' }}>
-       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-         <div>
-           <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 800, color: '#111827' }}>Billing Center</h1>
-           <p style={{ margin: '4px 0 0', color: '#6b7280' }}>
-             Mark charges paid in bulk or individually. New cycles start unpaid on the 1st; unpaid accounts auto-suspend at
-             midnight on the 15th.
-           </p>
-         </div>
-         <Link to="/admin" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>
-           ← Back to dashboard
-         </Link>
-       </div>
+     <div style={{ overflowX: 'auto' }}>
+-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
++      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
+         <thead>
+           <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+             <th style={{ padding: '10px' }}>Provider</th>
+             <th style={{ padding: '10px' }}>Outstanding</th>
+             <th style={{ padding: '10px' }}>Credit</th>
+             <th style={{ padding: '10px' }}>Apply Credit</th>
+             <th style={{ padding: '10px' }}>Status</th>
+             <th style={{ padding: '10px' }}>Actions</th>
+           </tr>
+         </thead>
+         <tbody>
+           {providers.map((provider) => {
+             const suspended = provider.isLocked || provider.autoSuspended;
+             const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isLocked ? 'Suspended' : 'Active';
+             const toggleDisabled = provider.autoSuspended && !provider.isLocked;
  
-       <div
-         style={{
-           display: 'grid',
-           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-           gap: '12px',
-           marginBottom: '16px',
-         }}
-       >
-         <StatCard label="Billing cycle start" value={billingCycleStart} helper="Unpaid by default on this date" />
-         <StatCard label="Auto-suspension" value={suspensionCutoffLabel} helper="Midnight cutoff on the 15th" />
-         <StatCard label="Unpaid charges" value={`${unpaidCharges.length}`} helper={`${selectedChargeIds.length} selected`} />
-         <StatCard
-           label="Outstanding balance"
-           value={`GYD ${outstandingBalance.toLocaleString()}`}
-           helper="Across all providers"
-         />
-       </div>
- 
-       <ReportSection title="Charge Management">
-         <BillingActionsPanel
-           billingCycleStart={billingCycleStart}
-           resolvedCharges={resolvedCharges}
-           selectedChargeIds={selectedChargeIds}
-           setChargesPaidState={setChargesPaidState}
-           suspensionCutoffLabel={suspensionCutoffLabel}
-           toggleAllChargesSelection={toggleAllChargesSelection}
-           toggleChargeSelection={toggleChargeSelection}
-           updateSingleChargeStatus={updateSingleChargeStatus}
-+          setProviderLockState={setProviderLockState}
-         />
-       </ReportSection>
- 
-       <ReportSection title="Provider Status & Credits">
-         <ProviderAccountsTable
-           applyCredit={applyCredit}
-           creditInputs={creditInputs}
-           providers={providers}
-           setCreditInputs={setCreditInputs}
-           toggleLock={toggleLock}
-         />
-       </ReportSection>
-     </div>
-   );
- }
- 
- 
- function AdminLayout() {
-   return (
-     <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: '100vh', background: '#e5e7eb' }}>
-       <aside
-         style={{
-           background: '#111827',
-           color: '#f9fafb',
-           padding: '24px 18px',
+             return (
+               <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                 <td style={{ padding: '10px' }}>
+                   <div style={{ fontWeight: 700 }}>{provider.name}</div>
+                   <div style={{ color: '#6b7280' }}>{provider.location}</div>
+                 </td>
+                 <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
+                 <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
+                 <td style={{ padding: '10px' }}>
  
 EOF
 )
