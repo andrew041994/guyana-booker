@@ -732,6 +732,10 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     # Billing for providers should only charge the platform fee, not their gross booking revenue.
     total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+    # Bill credits should only ever reduce what a provider owes. If the balance is
+    # negative (e.g., from a bad manual entry), clamp it to zero so we don't
+    # accidentally inflate the amount due.
+    credits = max(credits, Decimal("0"))
 
     net_due = total_due - credits
     if net_due < 0:
