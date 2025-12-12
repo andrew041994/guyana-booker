@@ -536,7 +536,7 @@ function StatCard({ label, value, helper }) {
   );
 }
 
-function ReportSection({ title, children }) {
+function ReportSection({ title, children,fullWidth = false }) {
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px', background: 'white', marginBottom: '16px' }}>
       <div style={{ fontWeight: 700, marginBottom: '12px', color: '#111827' }}>{title}</div>
@@ -673,8 +673,8 @@ function BillingActionsPanel({
           style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '260px' }}
         />
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
+      <div style={{  width: '100%' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', }}>
           <thead>
             <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
               <th style={{ padding: '10px' }}>
@@ -810,7 +810,7 @@ function BillingActionsPanel({
 function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '3000px' }}>
         <thead>
           <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
             <th style={{ padding: '10px' }}>Provider</th>
@@ -1081,7 +1081,7 @@ function AdminDashboard() {
         </ReportSection>
       </div>
 
-      <ReportSection title="Billing Actions">
+      <ReportSection title="Billing Actions" fullWidth>
         <BillingActionsPanel
           billingCycleStart={billingCycleStart}
           resolvedCharges={resolvedCharges}
