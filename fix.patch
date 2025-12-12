@@ -1,230 +1,91 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 90aa84b11206a5b85982e30f5710882af624ff0b..ce9dae0adf631995a44d41400c84825cd9b00ce7 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -292,105 +292,194 @@ function App() {
-         </p>
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 134aa0c8d9e4adc6b8f3398be969c17da9db780f..54abee6740b8e21d343a858d359a52915ba43f39 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -685,64 +685,74 @@ def generate_monthly_bills(db: Session, month: date):
+             # Don't overwrite already-paid bills
+             if existing_bill.is_paid:
+                 continue
  
-         <div className="landing-actions">
-           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
-             {token ? 'Go to dashboard' : 'Login'}
-           </Link>
-           {!token && (
-             <p className="credentials-hint">
-               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
-             </p>
-           )}
-         </div>
-       </div>
-     </div>
-   )
+             existing_bill.total_gyd = total
+             existing_bill.fee_gyd = fee
+             existing_bill.due_date = due
+         else:
+             bill = models.Bill(
+                 provider_id=prov.id,
+                 month=start,
+                 total_gyd=total,
+                 fee_gyd=fee,
+                 due_date=due,
+             )
+             db.add(bill)
  
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
-     }
-     return children
-   }
+     db.commit()
  
-   const AdminBilling = () => {
--    const [charges, setCharges] = React.useState([
--      { id: 1, provider: 'Ariana De Freitas', month: 'Oct 2024', amount: 26000, isPaid: false },
--      { id: 2, provider: 'Jamall Adams', month: 'Oct 2024', amount: 9000, isPaid: false },
--      { id: 3, provider: 'Kittisha Jones', month: 'Oct 2024', amount: 22000, isPaid: true },
--      { id: 4, provider: 'Linden Collective', month: 'Oct 2024', amount: 12000, isPaid: true },
--    ])
--
--    const togglePaid = (chargeId, nextState) => {
--      setCharges((prev) => prev.map((charge) => (charge.id === chargeId ? { ...charge, isPaid: nextState } : charge)))
-+    const [billingRows, setBillingRows] = React.useState([])
-+    const [loading, setLoading] = React.useState(false)
-+    const [error, setError] = React.useState('')
-+    const [searchTerm, setSearchTerm] = React.useState('')
-+    const [bulkUpdating, setBulkUpdating] = React.useState(false)
-+
-+    const fetchBillingRows = React.useCallback(async () => {
-+      setLoading(true)
-+      setError('')
-+      try {
-+        const res = await axios.get(`${API}/admin/billing`, {
-+          headers: { Authorization: `Bearer ${token}` }
-+        })
-+        setBillingRows(res.data)
-+      } catch (err) {
-+        console.error(err)
-+        setError('Unable to load provider billing details right now.')
-+      } finally {
-+        setLoading(false)
-+      }
-+    }, [token])
-+
-+    React.useEffect(() => {
-+      fetchBillingRows()
-+    }, [fetchBillingRows])
-+
-+    const updateProviderStatus = async (providerId, isPaid) => {
-+      try {
-+        const res = await axios.put(
-+          `${API}/admin/billing/${providerId}/status`,
-+          { is_paid: isPaid },
-+          { headers: { Authorization: `Bearer ${token}` } }
-+        )
-+        setBillingRows((prev) =>
-+          prev.map((row) => (row.provider_id === providerId ? res.data : row))
-+        )
-+      } catch (err) {
-+        console.error(err)
-+        setError('Failed to update provider billing status.')
-+      }
-     }
  
--    const markSelected = (paidState) => {
--      setCharges((prev) => prev.map((charge) => ({ ...charge, isPaid: paidState })))
-+    const markAll = async (isPaid) => {
-+      if (!billingRows.length) return
-+      setBulkUpdating(true)
-+      setError('')
-+      try {
-+        const responses = await Promise.all(
-+          billingRows.map((row) =>
-+            axios.put(
-+              `${API}/admin/billing/${row.provider_id}/status`,
-+              { is_paid: isPaid },
-+              { headers: { Authorization: `Bearer ${token}` } }
-+            )
-+          )
-+        )
-+
-+        const nextRows = responses.map((res) => res.data)
-+        setBillingRows((prev) => {
-+          const mapped = new Map(nextRows.map((row) => [row.provider_id, row]))
-+          return prev.map((row) => mapped.get(row.provider_id) || row)
-+        })
-+      } catch (err) {
-+        console.error(err)
-+        setError('Failed to update all provider statuses.')
-+      } finally {
-+        setBulkUpdating(false)
-+      }
-     }
  
-+    const normalizedSearch = searchTerm.trim().toLowerCase()
-+    const filteredRows = billingRows.filter((row) => {
-+      if (!normalizedSearch) return true
-+      const accountNumber = (row.account_number || '').toLowerCase()
-+      const phone = (row.phone || '').toLowerCase()
-+      return accountNumber.includes(normalizedSearch) || phone.includes(normalizedSearch)
-+    })
-+
-     return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Billing</p>
-             <h1>Provider Billing</h1>
--            <p className="header-subtitle">Monitor outstanding balances and mark charges as paid.</p>
-+            <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
-           </div>
-           <div className="button-row">
--            <button className="ghost-btn" onClick={() => markSelected(false)}>Mark all unpaid</button>
--            <button className="primary-btn" onClick={() => markSelected(true)}>Mark all paid</button>
-+            <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
-+            <button className="primary-btn" onClick={() => markAll(true)} disabled={bulkUpdating || loading}>Mark all paid</button>
-           </div>
-         </div>
  
-         <div className="admin-card">
-+          <div className="billing-toolbar">
-+            <div className="billing-search">
-+              <label htmlFor="billing-search-input">Filter by account or phone</label>
-+              <input
-+                id="billing-search-input"
-+                type="search"
-+                placeholder="e.g. ACC-1234 or +592..."
-+                value={searchTerm}
-+                onChange={(e) => setSearchTerm(e.target.value)}
-+              />
-+            </div>
-+            {loading && <span className="muted">Loading providers…</span>}
-+          </div>
+ 
+ def get_provider_fees_due(db: Session, provider_id: int) -> float:
+     """
+-    Sum of all unpaid fees for this provider, in GYD.
+-    Assumes Bill.fee_gyd is only populated after appointments have finished.
++    Amount due for the most recent unpaid bill for this provider, in GYD.
 +
-+          {error && <p className="form-error">{error}</p>}
-+
-           <div className="billing-table">
-             <div className="billing-table__head">
--              <span>Provider</span>
--              <span>Month</span>
--              <span>Amount (GYD)</span>
-+              <span>Name</span>
-+              <span>Account number</span>
-+              <span>Phone number</span>
-+              <span>Amount due (platform fees)</span>
-               <span>Status</span>
-               <span className="sr-only">Actions</span>
-             </div>
--            {charges.map((charge) => (
--              <div key={charge.id} className="billing-table__row">
-+            {filteredRows.map((row) => (
-+              <div key={row.provider_id} className="billing-table__row">
-                 <div>
--                  <p className="billing-provider">{charge.provider}</p>
--                  <p className="muted">Invoice #{charge.id}</p>
-+                  <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
-+                  <p className="muted">ID #{row.provider_id}</p>
-                 </div>
--                <span>{charge.month}</span>
--                <strong>{charge.amount.toLocaleString()}</strong>
--                <span className={charge.isPaid ? 'status-pill paid' : 'status-pill unpaid'}>
--                  {charge.isPaid ? 'Paid' : 'Unpaid'}
-+                <strong>{row.account_number || 'N/A'}</strong>
-+                <span>{row.phone || 'No phone added'}</span>
-+                <strong>{Number(row.amount_due_gyd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} GYD</strong>
-+                <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
-+                  {row.is_paid ? 'Paid' : 'Unpaid'}
-                 </span>
-                 <div className="billing-actions">
--                  <button className="ghost-btn" onClick={() => togglePaid(charge.id, false)}>Unpaid</button>
--                  <button className="primary-btn" onClick={() => togglePaid(charge.id, true)}>Paid</button>
-+                  <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
-+                    Unpaid
-+                  </button>
-+                  <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
-+                    Paid
-+                  </button>
-                 </div>
-               </div>
-             ))}
-+
-+            {!loading && filteredRows.length === 0 && (
-+              <p className="muted">No providers match that account number or phone.</p>
-+            )}
-           </div>
-         </div>
-       </div>
++    This mirrors the "Total due" shown on the provider-facing bill by:
++    - Taking the latest unpaid bill (so we don't aggregate across months),
++    - Using the platform fee amount (fee_gyd), and
++    - Applying any available bill credits.
+     """
+-    total_fees = (
+-        db.query(func.coalesce(func.sum(models.Bill.fee_gyd), 0))
++    latest_unpaid_bill = (
++        db.query(models.Bill)
+         .filter(
+             models.Bill.provider_id == provider_id,
+-            models.Bill.is_paid == False,  # unpaid only
++            models.Bill.is_paid == False,
+         )
+-        .scalar()
++        .order_by(models.Bill.due_date.desc())
++        .first()
      )
-   }
+-    credits = get_provider_credit_balance(db, provider_id)
  
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
-             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Billing
-             </NavLink>
-           </nav>
-           <div className="sidebar-footer">
-             Logged in · {token ? 'Authenticated' : 'Guest'}
-           </div>
+-    net_due = Decimal(str(total_fees or 0)) - Decimal(str(credits or 0))
++    if not latest_unpaid_bill:
++        return 0.0
++
++    fee_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
++    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
++
++    net_due = fee_due - credits
+     if net_due < 0:
+         net_due = Decimal("0")
+ 
+     return float(net_due)
+ 
+ 
+ def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
+     amount_due = get_provider_fees_due(db, provider.id)
+     latest_bill = (
+         db.query(models.Bill)
+         .filter(models.Bill.provider_id == provider.id)
+         .order_by(models.Bill.due_date.desc())
+         .first()
+     )
+ 
+     return {
+         "provider_id": provider.id,
+         "name": user.full_name or "",
+         "account_number": provider.account_number or "",
+         "phone": user.phone or "",
+         "amount_due_gyd": float(amount_due or 0.0),
+         "is_paid": amount_due <= 0,
+         "last_due_date": latest_bill.due_date if latest_bill else None,
+     }
+ 
  
 EOF
 )

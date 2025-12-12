@@ -707,20 +707,30 @@ def generate_monthly_bills(db: Session, month: date):
 
 def get_provider_fees_due(db: Session, provider_id: int) -> float:
     """
-    Sum of all unpaid fees for this provider, in GYD.
-    Assumes Bill.fee_gyd is only populated after appointments have finished.
+    Amount due for the most recent unpaid bill for this provider, in GYD.
+
+    This mirrors the "Total due" shown on the provider-facing bill by:
+    - Taking the latest unpaid bill (so we don't aggregate across months),
+    - Using the platform fee amount (fee_gyd), and
+    - Applying any available bill credits.
     """
-    total_fees = (
-        db.query(func.coalesce(func.sum(models.Bill.fee_gyd), 0))
+    latest_unpaid_bill = (
+        db.query(models.Bill)
         .filter(
             models.Bill.provider_id == provider_id,
-            models.Bill.is_paid == False,  # unpaid only
+            models.Bill.is_paid == False,
         )
-        .scalar()
+        .order_by(models.Bill.due_date.desc())
+        .first()
     )
-    credits = get_provider_credit_balance(db, provider_id)
 
-    net_due = Decimal(str(total_fees or 0)) - Decimal(str(credits or 0))
+    if not latest_unpaid_bill:
+        return 0.0
+
+    fee_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
+    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+
+    net_due = fee_due - credits
     if net_due < 0:
         net_due = Decimal("0")
 
