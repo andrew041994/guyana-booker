@@ -24,7 +24,7 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 
 
 
-  const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
+  const API = "https://bookitgy.onrender.com";
   console.log("### API base URL =", API);
 
   const isValidEmail = (value) => {
