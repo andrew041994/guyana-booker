@@ -184,7 +184,6 @@ if (Platform.OS !== "web") {
 }
 
 
-const ADMIN_EMAIL = "bookitgy.service@gmail.com";
 const PROFESSION_OPTIONS = [
   "Barber",
   "Hairdresser",

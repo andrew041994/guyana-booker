@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -26,6 +26,20 @@ settings = get_settings()
 app = FastAPI(title="BookitGY")
 scheduler = BackgroundScheduler()
 
+origins = [
+    "https://bookitgy.vercel.app",
+    "https://bookitgy.com",          # if you use it
+    "http://localhost:5173",         # local admin dev
+    "http://localhost:3000",         # if you use it
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():
