@@ -23,7 +23,7 @@ from app.config import get_settings
 
 settings = get_settings()
 
-app = FastAPI(title="Guyana Booker")
+app = FastAPI(title="BookitGY")
 scheduler = BackgroundScheduler()
 
 
